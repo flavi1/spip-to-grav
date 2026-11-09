@@ -37,17 +37,15 @@ with zipfile.ZipFile(os.path.join(out, nom_zip), 'w', zipfile.ZIP_DEFLATED) as z
                 z.write(p, f'{prefix_dir}/{rel}')
 taille = os.path.getsize(os.path.join(out, nom_zip))
 
-xml = f'''<?xml version="1.0" encoding="utf-8"?>
-<depot>
-	<nom>{escape('SPIP vers Grav')}</nom>
+xml = f'''<depot>
 	<titre>SPIP vers Grav</titre>
 	<descriptif>Dépôt du plugin spip_to_grav</descriptif>
 	<type>git</type>
-	<url_serveur>{url}</url_serveur>
-	<url_archives>{url}</url_archives>
+	<url_serveur>https://github.com/</url_serveur>
+	<url_archives>{url.rstrip('/')}</url_archives>
 </depot>
 <archives>
-	<archive>
+	<archive id="{prefix_dir}" dtd="paquet">
 		<zip>
 			<file>{nom_zip}</file>
 			<size>{taille}</size>
