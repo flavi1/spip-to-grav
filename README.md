@@ -41,3 +41,13 @@ Les textes sont rendus par `propre()` : le corps des pages est du HTML (`process
 - l'export est synchrone : sur de très gros sites, augmenter `max_execution_time`.
 
 Licence : GPL v3.
+
+## Mises à jour automatiques depuis l'admin SPIP (dépôt SVP)
+
+Chaque push sur `main` déclenche `.github/workflows/deploy.yml` : zip du plugin + `archives.xml` publiés sur GitHub Pages. La version est calculée toute seule (`x.y.<nombre de commits>`, `x.y` venant de `paquet.xml`) et n'est injectée que dans le zip.
+
+Côté SPIP (une seule fois) : **Configuration → Gestion des plugins → Ajouter des plugins → Dépôts**, ajouter
+`https://flavi1.github.io/spip-to-grav/archives.xml`. Les mises à jour apparaissent ensuite dans la gestion des plugins.
+
+Pour changer de version mineure (0.2, 1.0…), modifier `version` dans `paquet.xml`.
+Si le plugin a d'abord été installé par `git clone` dans `plugins/`, le supprimer avant d'installer via SVP (même préfixe `sptg`).
