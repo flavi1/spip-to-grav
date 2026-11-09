@@ -1,0 +1,15 @@
+<paquet
+	prefix="sptg"
+	categorie="outil"
+	version="0.1.0"
+	etat="test"
+	compatibilite="[4.1.0;4.4.*]"
+	logo="prive/themes/spip/images/sptg-32.svg"
+	documentation="https://github.com/flavi1/spip-to-grav"
+>
+	<nom>SPIP vers Grav</nom>
+	<auteur>flavi1</auteur>
+	<licence>GPL v3</licence>
+
+	<menu nom="exporter_grav" titre="sptg:titre_menu" parent="menu_edition" icone="images/sptg-16.svg" action="exporter_grav" />
+</paquet>

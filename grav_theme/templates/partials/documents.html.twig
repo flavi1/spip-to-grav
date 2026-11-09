@@ -1,0 +1,18 @@
+{% if page.header.documents %}
+<section class="spip-documents">
+	<h2>Documents</h2>
+	<ul>
+	{% for d in page.header.documents %}
+		{% set href = d.local ? page.url ~ '/' ~ d.local : d.url %}
+		<li>
+			{% if d.mode == 'image' or d.extension in ['jpg','jpeg','png','gif','webp','svg'] %}
+				<a href="{{ href }}"><img src="{{ href }}" alt="{{ d.titre|e('html_attr') }}" loading="lazy"{% if d.largeur %} width="{{ d.largeur }}"{% endif %}{% if d.hauteur %} height="{{ d.hauteur }}"{% endif %}></a>
+			{% else %}
+				<a href="{{ href }}">{{ (d.titre ?: href|split('/')|last)|e }}</a>{% if d.extension %} <small>({{ d.extension|upper }})</small>{% endif %}
+			{% endif %}
+			{% if d.descriptif %}<div class="spip-doc-descriptif">{{ d.descriptif|raw }}</div>{% endif %}
+		</li>
+	{% endfor %}
+	</ul>
+</section>
+{% endif %}

@@ -1,0 +1,4 @@
+title: Collection SPIP
+'@extends':
+    type: default
+    context: blueprints://pages

@@ -1,0 +1,81 @@
+<div class="formulaire_spip formulaire_exporter_grav">
+	[<p class="reponse_formulaire reponse_formulaire_ok">(#ENV**{message_ok})</p>]
+	[<p class="reponse_formulaire reponse_formulaire_erreur">(#ENV*{message_erreur})</p>]
+	<form method="post" action="#ENV{action}"><div>
+		#ACTION_FORMULAIRE
+
+		<fieldset>
+			<legend><:sptg:legende_objets:></legend>
+			<p class="explication"><:sptg:aide_objets:></p>
+			[<span class="erreur_message">(#ENV**{erreurs/objets})</span>]
+			<ul class="editer-groupe">
+				<BOUCLE_objets(DATA){source tableau,#ENV**{_objets}}>
+				<li class="editer choix">
+					<input type="checkbox" name="objets[]" id="objet_#CLE" value="#CLE"[(#CLE|in_array{#ENV{objets}}|?{' checked="checked"'})] />
+					<label for="objet_#CLE">[(#VALEUR{label})]</label>
+				</li>
+				</BOUCLE_objets>
+			</ul>
+		</fieldset>
+
+		<fieldset>
+			<legend><:sptg:legende_secteurs:></legend>
+			<p class="explication"><:sptg:aide_secteurs:></p>
+			[<span class="erreur_message">(#ENV**{erreurs/secteurs})</span>]
+			<ul class="editer-groupe">
+				<BOUCLE_secteurs(DATA){source tableau,#ENV**{_secteurs}}>
+				<li class="editer choix">
+					<input type="checkbox" name="secteurs[]" id="secteur_#CLE" value="#CLE"[(#CLE|in_array{#ENV{secteurs}}|?{' checked="checked"'})] />
+					<label for="secteur_#CLE">[(#VALEUR)]</label>
+				</li>
+				</BOUCLE_secteurs>
+			</ul>
+		</fieldset>
+
+		<fieldset>
+			<legend><:sptg:legende_statuts:></legend>
+			[<span class="erreur_message">(#ENV**{erreurs/statuts})</span>]
+			<ul class="editer-groupe">
+				<BOUCLE_statuts(DATA){source tableau,#ENV**{_statuts}}>
+				<li class="editer choix">
+					<input type="checkbox" name="statuts[]" id="statut_#CLE" value="#CLE"[(#CLE|in_array{#ENV{statuts}}|?{' checked="checked"'})] />
+					<label for="statut_#CLE">[(#VALEUR)]</label>
+				</li>
+				</BOUCLE_statuts>
+			</ul>
+		</fieldset>
+
+		<fieldset>
+			<legend><:sptg:legende_options:></legend>
+			<ul class="editer-groupe">
+				<li class="editer choix">
+					<input type="checkbox" name="generer_theme" id="opt_theme" value="oui"[(#ENV{generer_theme}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_theme"><:sptg:option_generer_theme:></label>
+				</li>
+				<li class="editer editer_nom_theme[ (#ENV**{erreurs/nom_theme}|oui)erreur]">
+					<label for="nom_theme"><:sptg:label_nom_theme:></label>
+					[<span class="erreur_message">(#ENV**{erreurs/nom_theme})</span>]
+					<input type="text" class="text" name="nom_theme" id="nom_theme" value="#ENV{nom_theme}" />
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="conserver_img" id="opt_img" value="oui"[(#ENV{conserver_img}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_img"><:sptg:option_conserver_img:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="copier_documents" id="opt_docs" value="oui"[(#ENV{copier_documents}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_docs"><:sptg:option_copier_documents:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="conserver_source" id="opt_src" value="oui"[(#ENV{conserver_source}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_src"><:sptg:option_conserver_source:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="inclure_emails" id="opt_mail" value="oui"[(#ENV{inclure_emails}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_mail"><:sptg:option_emails:></label>
+				</li>
+			</ul>
+		</fieldset>
+
+		<p class="boutons"><input type="submit" class="submit" value="<:sptg:bouton_exporter:>" /></p>
+	</div></form>
+</div>

@@ -1,0 +1,12 @@
+body{font-family:system-ui,sans-serif;line-height:1.6;max-width:60rem;margin:0 auto;padding:1rem;color:#222}
+.site-header{display:flex;flex-wrap:wrap;gap:1rem;align-items:baseline;border-bottom:1px solid #ddd;margin-bottom:2rem}
+.site-title{font-weight:700;font-size:1.3rem;text-decoration:none;color:inherit}
+.site-nav ul{display:flex;flex-wrap:wrap;gap:1rem;list-style:none;margin:0;padding:0}
+.site-nav .active a{font-weight:700}
+.spip-objet header time,.spip-contenus time{color:#777;font-size:.9rem}
+.spip-champ.spip-chapo{font-weight:600}
+.spip-logo{max-width:12rem;float:right;margin:0 0 1rem 1rem}
+.spip-champs dt{font-weight:600}
+.spip-documents img{max-width:100%;height:auto}
+.spip-taxonomies{margin-top:2rem;color:#555;font-size:.9rem}
+.site-footer{margin-top:3rem;border-top:1px solid #ddd;padding-top:1rem;color:#777;font-size:.9rem}

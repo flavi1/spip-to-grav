@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang|default('fr') }}">
+<head>
+{% block head %}
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{% if not page.home %}{{ page.title|e }} | {% endif %}{{ site.title|e }}</title>
+	{% if site.metadata.description %}<meta name="description" content="{{ site.metadata.description|e('html_attr') }}">{% endif %}
+	{% do assets.addCss('theme://css/site.css') %}
+{% endblock %}
+	{{ assets.css()|raw }}
+</head>
+<body class="tpl-{{ page.template }}">
+	<header class="site-header">
+		<a class="site-title" href="{{ base_url_relative }}/">{{ site.title|e }}</a>
+		{% include 'partials/nav.html.twig' %}
+	</header>
+	<main>
+		{% block content %}{{ page.content|raw }}{% endblock %}
+	</main>
+	<footer class="site-footer">{{ site.title|e }}</footer>
+	{{ assets.js()|raw }}
+</body>
+</html>
