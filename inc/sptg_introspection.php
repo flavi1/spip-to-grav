@@ -61,13 +61,14 @@ function sptg_introspecter($comptes = false) {
 	include_spip('base/objets');
 	include_spip('base/abstract_sql');
 	include_spip('base/connect_sql');
+	$trouver_table = charger_fonction('trouver_table', 'base');
 
 	$res = array();
 	foreach (lister_tables_objets_sql() as $table => $d) {
 		if (in_array($table, sptg_tables_exclues())) {
 			continue;
 		}
-		$desc = trouver_table($table);
+		$desc = $trouver_table($table);
 		if (!$desc or empty($desc['field'])) {
 			continue;
 		}
