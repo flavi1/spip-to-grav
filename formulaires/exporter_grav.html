@@ -59,6 +59,11 @@
 						<label for="redir_aucune"><:sptg:redirections_aucune:></label>
 					</div>
 				</li>
+				<li class="editer editer_liens_stables">
+					<input type="checkbox" name="liens_stables" id="opt_liens_stables" value="oui"[(#ENV{liens_stables}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_liens_stables"><:sptg:option_liens_stables:></label>
+					<p class="explication"><:sptg:aide_liens_stables:></p>
+				</li>
 				<li class="editer editer_langues">
 					<label><:sptg:label_langues:></label>
 					[<p class="explication">(#ENV{_multilingue}|?{<:sptg:aide_langues:>,<:sptg:aide_langues_mono:>})</p>]

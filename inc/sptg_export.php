@@ -196,6 +196,30 @@ function sptg_urls_a_parametres() {
 	return (bool) ($u and isset($u['query']));
 }
 
+/**
+ * Liens stables : les liens internes déjà remplacés par des routes (sptg_liens_internes) deviennent
+ * `spip:<type>/<id>[#ancre]`, résolus à l'affichage par le thème. Seuls les href qui sont exactement la
+ * route d'un objet exporté (préfixe de langue compris) sont touchés.
+ *
+ * @param array $inverse route (sans préfixe de langue) => « type/id »
+ */
+function sptg_liens_stables($html, array $inverse, $prefixe = '') {
+	return preg_replace_callback(
+		'/\bhref=(["\'])([^"\'#]*)(#[^"\']*)?\1/i',
+		function ($m) use ($inverse, $prefixe) {
+			$u = html_entity_decode($m[2]);
+			if ($prefixe !== '' and strpos($u, $prefixe . '/') === 0) {
+				$u = substr($u, strlen($prefixe));
+			}
+			if ($u !== '' and $u[0] === '/' and isset($inverse[$u])) {
+				return 'href=' . $m[1] . 'spip:' . $inverse[$u] . (isset($m[3]) ? $m[3] : '') . $m[1];
+			}
+			return $m[0];
+		},
+		$html
+	);
+}
+
 /** Remplace les liens internes SPIP ([->art12]) par la route Grav correspondante (préfixée par la langue en mode i18n) */
 function sptg_liens_internes($texte, array $routes, $prefixe = '') {
 	$alias = array(
@@ -209,7 +233,7 @@ function sptg_liens_internes($texte, array $routes, $prefixe = '') {
 			$t = strtolower($m[1]);
 			$type = isset($alias[$t]) ? $alias[$t] : $t;
 			if (isset($routes[$type][(int) $m[2]])) {
-				return '->' . $routes[$type][(int) $m[2]] . (isset($m[3]) ? $m[3] : '');
+				return '->' . $prefixe . $routes[$type][(int) $m[2]] . (isset($m[3]) ? $m[3] : '');
 			}
 			return $m[0];
 		},
@@ -407,6 +431,11 @@ function sptg_rendre_texte_interne($raw, array &$ctx, $champ) {
 		}
 	}
 
+	// liens stables (option) : routes -> spip:type/id, résolus par le thème
+	if (!empty($ctx['stables']) and !empty($ctx['inverse'])) {
+		$html = sptg_liens_stables($html, $ctx['inverse'], isset($ctx['prefixe']) ? $ctx['prefixe'] : '');
+	}
+
 	if (empty($ctx['markdown'])) {
 		return array('val' => $html, 'fmt' => 'html');
 	}
@@ -444,6 +473,7 @@ function sptg_exporter(array $o) {
 		'creer_zip' => false, 'mode_images' => 'partage',
 		'conserver_source' => false, 'inclure_emails' => false, 'urls_spip' => true,
 		'installer_grav' => false, 'schema_urls' => 'spip', 'redirections' => 'auto', 'langues' => 'auto',
+		'liens_stables' => false,
 	);
 	if (!isset(sptg_schemas_urls()[$o['schema_urls']])) {
 		$o['schema_urls'] = 'spip';
@@ -458,6 +488,7 @@ function sptg_exporter(array $o) {
 		'redirections' => 0, 'non_redirigeables' => 0, 'approx' => 0, 'fmt_html' => 0,
 		'doublons' => array(), 'trad_conflits' => array(), 'langues' => array(), 'index' => 0,
 		'grav' => '', 'moteur_redirections' => '', 'schema_urls' => $o['schema_urls'],
+		'liens_stables' => '', 'theme_helpers' => '',
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
@@ -476,6 +507,21 @@ function sptg_exporter(array $o) {
 	$rapport['est_install'] = $est_install;
 	$pages = $racine . 'user/pages/';
 	$themes = $racine . 'user/themes/';
+
+	// Helpers du thème : régénérés avec le thème, sinon ceux du thème réutilisé (qui peut venir d'une
+	// ancienne version du plugin ou avoir été personnalisé : il n'est jamais modifié). Sans helpers
+	// compatibles, pas de résolveur d'anciennes URL ni de liens stables (routes absolues à la place).
+	$helpers_ok = true;
+	if (!$o['generer_theme']) {
+		$h = sptg_theme_helpers($themes . $slug_theme);
+		$helpers_ok = $h['etat'] == 'ok';
+		$rapport['theme_helpers'] = $helpers_ok ? 'Thème réutilisé : helpers compatibles (API ' . $h['api'] . ').' : 'Thème réutilisé : ' . $h['message'] . '.';
+	}
+	$stables = (bool) $o['liens_stables'] && $helpers_ok;
+	if ($o['liens_stables']) {
+		$rapport['liens_stables'] = $stables ? 'actifs' : 'non activés (routes absolues) : ' . $rapport['theme_helpers'];
+	}
+	$inverse = array();
 	sptg_mkdir($pages);
 	if (!is_dir($pages) or !is_writable($pages)) {
 		throw new \RuntimeException('Dossier de destination non accessible en écriture : ' . $pages);
@@ -708,10 +754,11 @@ function sptg_exporter(array $o) {
 		$items[$k]['pub'] = $r;
 		$pub[$it['cle']] = $r;
 		$routes[$type][$id] = $r;
+		$inverse[$r] = $type . '/' . $id;
 	}
 
 	// anciennes URL : table du thème (résolveur) ou redirections de site.yaml (chemins seulement)
-	$moteur = $o['redirections'] == 'aucune' ? 'aucune' : ($o['generer_theme'] ? 'resolveur' : 'site');
+	$moteur = $o['redirections'] == 'aucune' ? 'aucune' : ($helpers_ok ? 'resolveur' : 'site');
 	$rapport['moteur_redirections'] = $moteur;
 	if ($moteur != 'aucune') {
 		// chemin SPIP actuel (sans langue ni terminaison) des rubriques : parents des anciennes URL arborescentes
@@ -806,7 +853,7 @@ function sptg_exporter(array $o) {
 		foreach ($langues_obj ?: array('') as $lang_fichier) {
 			$lang_rendu = $lang_fichier !== '' ? $lang_fichier : ($lang_objet !== '' ? $lang_objet : $cl['langue_site']);
 			$ctx = array(
-				'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+				'routes' => &$routes, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
 				'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 				'dirabs' => $dirabs, 'route' => $it['pub'] . ($lang_fichier !== '' ? ' [' . $lang_fichier . ']' : ''), 'noms' => &$noms_item,
 				'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
@@ -994,7 +1041,7 @@ function sptg_exporter(array $o) {
 	foreach ($multi_actif ? $cl['langues'] : array('') as $lf) {
 		$lr = $lf !== '' ? $lf : $cl['langue_site'];
 		$ctx = array(
-			'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+			'routes' => &$routes, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
 			'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 			'dirabs' => $pages . '01.home/', 'route' => '/home', 'noms' => array(),
 			'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
@@ -1121,6 +1168,12 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	$t .= "- Modèles d'image/document introuvables : " . $r['stats']['modeles_orphelins'] . "\n";
 	if ($r['grav']) {
 		$t .= "- Grav : " . $r['grav'] . "\n";
+	}
+	if ($r['theme_helpers']) {
+		$t .= "- " . $r['theme_helpers'] . "\n";
+	}
+	if ($r['liens_stables']) {
+		$t .= "- Liens internes stables (spip:type/id) : " . $r['liens_stables'] . "\n";
 	}
 	$t .= "- Schéma d'URL : " . $r['schema_urls'] . " ; index des identifiants : " . $r['index'] . " entrée(s) dans user/data/spip-id\n";
 	$t .= "- Anciennes URL : " . $r['redirections'] . " (moteur : " . ($r['moteur_redirections'] ?: 'aucun') . ")"

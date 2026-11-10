@@ -62,6 +62,7 @@ function formulaires_exporter_grav_charger_dist() {
 		'redirections' => 'auto',
 		'langues' => 'auto',
 		'installer_grav' => '',
+		'liens_stables' => '',
 		'mode_images' => 'partage',
 		'conserver_source' => '',
 		'inclure_emails' => '',
@@ -149,6 +150,7 @@ function formulaires_exporter_grav_traiter_dist() {
 		'redirections' => _request('redirections') == 'aucune' ? 'aucune' : 'auto',
 		'langues' => _request('langues') == 'non' ? 'non' : 'auto',
 		'installer_grav' => _request('installer_grav') == 'oui',
+		'liens_stables' => _request('liens_stables') == 'oui',
 		'mode_images' => _request('mode_images') == 'img' ? 'img' : 'partage',
 		'conserver_source' => _request('conserver_source') == 'oui',
 		'inclure_emails' => _request('inclure_emails') == 'oui',
@@ -172,6 +174,12 @@ function formulaires_exporter_grav_traiter_dist() {
 	$msg .= '<br />' . _T('sptg:resultat_urls', array('redir' => $r['redirections'], 'non' => $r['non_redirigeables']));
 	if ($r['grav']) {
 		$msg .= '<br />' . entites_html($r['grav']);
+	}
+	if ($r['theme_helpers']) {
+		$msg .= '<br />' . entites_html($r['theme_helpers']);
+	}
+	if ($r['liens_stables']) {
+		$msg .= '<br />Liens stables : ' . entites_html($r['liens_stables']);
 	}
 	if ($r['doublons']) {
 		$msg .= '<br />' . count($r['doublons']) . ' route(s) en double suffixée(s) (voir le rapport).';

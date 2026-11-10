@@ -85,6 +85,18 @@ class @@CLASSE@@ extends Theme
 		$this->grav->redirect($p['url'], 301);
 	}
 
+	/** Liens stables « spip:type/id » : résolus à la sortie (le cache de contenu de Grav n'est pas concerné) */
+	public function onOutputGenerated(): void
+	{
+		$out = $this->grav->output ?? null;
+		if (!is_string($out) or strpos($out, 'spip:') === false) {
+			return;
+		}
+		$langue = $this->grav['language'];
+		$actif = $langue->enabled() ? (string) $langue->getActive() : '';
+		$this->grav->output = $this->sptgRuntime()->resoudreLiens($out, $actif);
+	}
+
 	public function onTwigExtensions(): void
 	{
 		$twig = $this->grav['twig']->twig();

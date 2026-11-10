@@ -71,6 +71,40 @@ function sptg_blueprint_objet(array $info, $emails) {
 	);
 }
 
+// ---------------------------------------------------------------- helpers d'un thème existant
+
+/** Version d'API thème <-> plugin attendue (doit égaler Grav\Theme\Sptg\Runtime::API ; vérifié par les tests) */
+define('SPTG_API_THEME', 1);
+
+/**
+ * Un thème déjà présent (réutilisé sans régénération) comporte-t-il nos helpers, et sont-ils assez récents ?
+ * La version est lue dans son sptg_runtime.php (« const API = N; »). Un thème venant d'une ancienne
+ * version du plugin n'a pas cette constante ; il a pu aussi être personnalisé : on ne le modifie jamais.
+ *
+ * @return array ['etat' => absent|ancien|ok, 'api' => int|null, 'message' => string]
+ */
+function sptg_theme_helpers($dir_theme) {
+	$f = rtrim($dir_theme, '/') . '/sptg_runtime.php';
+	if (!is_file($f)) {
+		return array('etat' => 'absent', 'api' => null, 'message' => "le thème n'a pas les helpers spip_to_grav (sptg_runtime.php absent)");
+	}
+	$api = preg_match('/\bconst\s+API\s*=\s*(\d+)\s*;/', (string) file_get_contents($f), $m) ? (int) $m[1] : null;
+	if ($api === null or $api < SPTG_API_THEME) {
+		return array('etat' => 'ancien', 'api' => $api, 'message' => 'les helpers du thème sont trop anciens (API ' . ($api === null ? 'inconnue' : $api) . ', ' . SPTG_API_THEME . ' requise)');
+	}
+	$php = glob(rtrim($dir_theme, '/') . '/*.php');
+	$classe = false;
+	foreach ((array) $php as $p) {
+		if (basename($p) !== 'sptg_runtime.php' and strpos((string) file_get_contents($p), 'sptgRuntime') !== false) {
+			$classe = true;
+		}
+	}
+	if (!$classe) {
+		return array('etat' => 'absent', 'api' => $api, 'message' => "le fichier PHP principal du thème n'utilise pas les helpers (sptgRuntime absent)");
+	}
+	return array('etat' => 'ok', 'api' => $api, 'message' => '');
+}
+
 // ---------------------------------------------------------------- gabarits
 
 /** Dossier des « templates de templates » (fichiers .tpl dont sont générés les fichiers PHP et Twig du thème) */

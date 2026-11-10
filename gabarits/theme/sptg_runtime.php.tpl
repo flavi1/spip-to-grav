@@ -18,6 +18,13 @@ namespace Grav\Theme\Sptg;
 
 class Runtime
 {
+    /**
+     * Version de l'interface thème <-> plugin spip_to_grav (inc/sptg_theme.php : SPTG_API_THEME).
+     * Le plugin la lit dans ce fichier pour savoir si un thème réutilisé sait résoudre les liens
+     * `spip:` et les anciennes URL. À incrémenter quand le plugin exige une nouvelle capacité.
+     */
+    const API = 1;
+
     /** @var string */
     private $dir;
     /** @var callable(string): ?array  dossier relatif -> ['type','id','lang','url','title'] ou null */
@@ -246,6 +253,56 @@ class Runtime
             }
         }
         return null;
+    }
+
+    // ------------------------------------------------------------------ liens stables
+
+    /**
+     * URL d'un objet dans une langue donnée (pages <multi> : un fichier par langue), sinon URL de la page.
+     *
+     * @return string|null
+     */
+    public function urlDansLangue($type, $id, $langue = '')
+    {
+        $p = $this->resoudre($type, (int) $id);
+        if (!$p) {
+            return null;
+        }
+        $entree = $this->entree($type, (int) $id);
+        if ($langue !== '' && $entree && !empty($entree['langues']) && in_array($langue, (array) $entree['langues'], true)) {
+            $urls = call_user_func($this->languesDossier, $p);
+            if (isset($urls[$langue])) {
+                return $urls[$langue];
+            }
+        }
+        return $p['url'];
+    }
+
+    /**
+     * Remplace les liens stables `href="spip:<type>/<id>[#ancre]"` par l'URL actuelle de l'objet.
+     * Cible introuvable : href="#".
+     *
+     * Appelé à la sortie (onOutputGenerated), pas sur le contenu des pages : le cache de pages de Grav
+     * figerait sinon les URL, et déplacer une page ne corrigerait pas les liens qui y mènent.
+     */
+    public function resoudreLiens($html, $langue = '')
+    {
+        if (strpos((string) $html, 'spip:') === false) {
+            return $html;
+        }
+        $cache = array();
+        return preg_replace_callback(
+            '/\bhref=(["\'])spip:([a-z_][a-z0-9_]*)\/([0-9]+)(#[^"\']*)?\1/',
+            function ($m) use (&$cache, $langue) {
+                $cle = $m[2] . '/' . $m[3];
+                if (!array_key_exists($cle, $cache)) {
+                    $cache[$cle] = $this->urlDansLangue($m[2], (int) $m[3], $langue);
+                }
+                $url = $cache[$cle];
+                return 'href=' . $m[1] . ($url === null ? '#' : htmlspecialchars($url, ENT_QUOTES) . (isset($m[4]) ? $m[4] : '')) . $m[1];
+            },
+            $html
+        );
     }
 
     // ------------------------------------------------------------------ traductions

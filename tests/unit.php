@@ -314,4 +314,42 @@ t_ok(strpos(sptg_twig_objet(array('type' => 'rubrique') + $info, false), 'partia
 t_ok(strpos($tw, 's.soustitre') !== false and strpos($tw, 's.ps') !== false, 'objet : champs texte', $tw);
 t_ok(!preg_match("/\n\n\n/", $tw), 'objet : pas de lignes vides en trop', $tw);
 
+// ---------------------------------------------------------------- liens stables
+t_eq(Runtime::API, SPTG_API_THEME, 'API du runtime = API attendue par le plugin');
+$h = '<a href="spip:article/10#x" class="a">A</a> <a href=\'spip:article/999\'>?</a> <a href="/dehors">d</a> <a href="http://x.org/spip:article/10">e</a>';
+$out = $rt()->resoudreLiens($h, 'fr');
+t_ok(strpos($out, 'href="/actu/a#x"') !== false, 'liens stables : résolu avec ancre', $out);
+t_ok(strpos($out, "href='#'") !== false, 'liens stables : cible inconnue → #', $out);
+t_ok(strpos($out, 'href="/dehors"') !== false and strpos($out, 'http://x.org/spip:article/10') !== false, 'liens stables : autres liens intacts', $out);
+t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', 'en'), '<a href="/en/actu">r</a>', 'liens stables : langue courante (pages <multi>)');
+t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', 'fr'), '<a href="/actu">r</a>', 'liens stables : langue par défaut');
+t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', ''), '<a href="/actu">r</a>', 'liens stables : sans langue active');
+t_eq($rt()->resoudreLiens('rien', 'fr'), 'rien', 'liens stables : texte sans lien');
+t_eq($rt()->resoudreLiens('<a href="SPIP:Article/10">r</a>', 'fr'), '<a href="SPIP:Article/10">r</a>', 'liens stables : schéma en majuscules non traité (Grav le laisse tel quel)');
+
+$inv = array('/actu' => 'rubrique/1', '/actu/a' => 'article/10', '/b' => 'article/11');
+t_eq(sptg_liens_stables('<a href="/actu/a#n1">x</a>', $inv), '<a href="spip:article/10#n1">x</a>', 'export : route → spip: avec ancre');
+t_eq(sptg_liens_stables('<a href="/en/b">x</a>', $inv, '/en'), '<a href="spip:article/11">x</a>', 'export : préfixe de langue retiré');
+t_eq(sptg_liens_stables('<a href="/b">x</a>', $inv, '/en'), '<a href="spip:article/11">x</a>', 'export : route sans préfixe acceptée');
+t_eq(sptg_liens_stables('<a href="/inconnue">x</a> <a href="http://a/b">y</a> <a href="#ancre">z</a> <a href="">v</a>', $inv), '<a href="/inconnue">x</a> <a href="http://a/b">y</a> <a href="#ancre">z</a> <a href="">v</a>', 'export : autres liens intacts');
+t_eq(sptg_liens_internes('[x->art11] [y->rub1#a]', array('article' => array(11 => '/b'), 'rubrique' => array(1 => '/actu')), '/en'), '[x->/en/b] [y->/en/actu#a]', 'liens internes : préfixe de langue');
+
+// thème réutilisé : helpers présents, anciens ou absents
+$dt = t_tmp('helpers') . '/';
+sptg_generer_socle($dt, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr'));
+t_eq(sptg_theme_helpers($dt)['etat'], 'ok', 'helpers : thème généré compatible');
+$rt_src = file_get_contents($dt . 'sptg_runtime.php');
+file_put_contents($dt . 'sptg_runtime.php', preg_replace('/const API = \d+;/', 'const API = 0;', $rt_src));
+t_eq(sptg_theme_helpers($dt)['etat'], 'ancien', 'helpers : API trop ancienne');
+file_put_contents($dt . 'sptg_runtime.php', preg_replace('/const API = \d+;/', '', $rt_src));
+t_eq(sptg_theme_helpers($dt)['etat'], 'ancien', 'helpers : sans constante API (ancienne version du plugin)');
+file_put_contents($dt . 'sptg_runtime.php', $rt_src);
+file_put_contents($dt . 'mon-theme.php', "<?php\n// thème personnalisé sans nos helpers\n");
+t_eq(sptg_theme_helpers($dt)['etat'], 'absent', 'helpers : classe du thème sans sptgRuntime');
+unlink($dt . 'sptg_runtime.php');
+t_eq(sptg_theme_helpers($dt)['etat'], 'absent', 'helpers : runtime absent');
+t_eq(sptg_theme_helpers('/inexistant')['etat'], 'absent', 'helpers : thème inexistant');
+$out = sptg_gabarit('theme/__slug__.php', array('CLASSE' => 'X'));
+t_ok(strpos($out, 'public function onOutputGenerated') !== false and strpos($out, 'resoudreLiens') !== false, 'thème : onOutputGenerated résout les liens stables');
+
 t_fin('unit');

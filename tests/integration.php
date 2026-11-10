@@ -68,6 +68,53 @@ foreach (glob("$dest/user/themes/demo-theme/*.php") as $f) {
 $yaml = glob("$dest/user/config/*.yaml");
 t_ok(!is_file("$dest/user/config/system.yaml") or strpos(file_get_contents("$dest/user/config/system.yaml"), 'languages:') === false, 'mono : pas de bloc languages');
 
+
+// ------------------------------------------------ 1b. liens stables (spip:type/id)
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, '1. Actualités'), rub(2, 1, 'Sous rubrique')),
+		'spip_articles' => array(art(10, 2, 'Mon article', "Voir [lien->art11] et [la rubrique->rub2#haut]."), art(11, 1, 'Autre article')),
+	),
+));
+list($r, $dest) = lancer('stables', array('schema_urls' => 'hierarchique', 'liens_stables' => true));
+$e10 = index($dest, 'article', 10);
+$page10 = file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md");
+t_ok(strpos($page10, '](spip:article/11)') !== false, 'stables : lien vers un article', $page10);
+t_ok(strpos($page10, '](spip:rubrique/2#haut)') !== false, 'stables : lien vers une rubrique avec ancre', $page10);
+t_eq($r['ecarts'], array(), 'stables : aucun écart de vérification');
+t_eq($r['liens_stables'], 'actifs', 'stables : rapport');
+$thdir = "$dest/user/themes/demo-theme";
+t_eq(sptg_theme_helpers($thdir)['etat'], 'ok', 'stables : le thème généré porte les helpers');
+
+// sans régénérer le thème et sans helpers : routes absolues, avertissement, redirections par site.yaml
+list($r, $dest) = lancer('stables-sans', array('schema_urls' => 'hierarchique', 'liens_stables' => true, 'generer_theme' => false));
+$e10 = index($dest, 'article', 10);
+$page10 = file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md");
+t_ok(strpos($page10, '](spip:') === false and preg_match('~\]\(/[a-z0-9/_-]+\)~', $page10), 'stables : repli sur les routes absolues', $page10);
+t_ok(strpos($r['liens_stables'], 'non activés') !== false, 'stables : avertissement dans le rapport', $r['liens_stables']);
+t_eq($r['moteur_redirections'], 'site', 'stables : redirections par site.yaml sans helpers');
+t_ok(strpos(sptg_rapport_texte($r, array('export_name' => 'demo'), ''), 'non activés') !== false, 'stables : avertissement dans le rapport texte');
+
+// thème réutilisé qui comporte déjà les helpers (généré une première fois, puis contenu seul)
+$d2 = t_tmp('stables-reuse');
+sptg_generer_socle("$d2/demo/user/themes/demo-theme/", 'demo-theme', array('CLASSE' => 'DemoTheme', 'LANGUE_SITE' => 'fr'));
+$ouvert = sptg_exporter(array(
+	'export_name' => 'demo', 'dossier_destination' => $d2, 'vider' => true, 'objets' => array('article', 'rubrique'), 'secteurs' => array(1, 2, 3),
+	'statuts' => array('publie'), 'creer_zip' => false, 'schema_urls' => 'hierarchique', 'liens_stables' => true, 'generer_theme' => false,
+));
+$e10 = t_json("$d2/demo/user/data/spip-id/article/10.json");
+$page10 = file_get_contents("$d2/demo/user/pages/{$e10['dossier']}/article.md");
+t_ok(strpos($page10, '](spip:article/11)') !== false, 'stables : thème réutilisé compatible → spip:', $page10);
+t_eq($ouvert['moteur_redirections'], 'resolveur', 'stables : thème réutilisé → résolveur d\'anciennes URL');
+t_ok(is_file("$d2/demo/user/themes/demo-theme/demo-theme.php"), 'stables : thème réutilisé non supprimé par « vider »');
+
+// option désactivée : routes absolues
+list($r, $dest) = lancer('stables-non', array('schema_urls' => 'hierarchique'));
+$e10 = index($dest, 'article', 10);
+t_ok(strpos(file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md"), '](spip:') === false, 'stables : désactivé par défaut');
+t_eq($r['liens_stables'], '', 'stables : rien dans le rapport si non demandé');
+
 // ------------------------------------------------ 2. schéma « spip » avec URL arborescentes
 sptg_scenario(array(
 	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
@@ -136,7 +183,8 @@ sptg_scenario(array(
 	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
 	'rows' => array(
 		'spip_rubriques' => array(rub(1, 0, '<multi>[fr]Accueil[en]Home</multi>', '')),
-		'spip_articles' => array(art(10, 1, '<multi>[fr]Bonjour[en]Hello</multi>', "<multi>[fr]Salut le monde.[en]Hi world.</multi>", '')),
+		'spip_articles' => array(art(10, 1, '<multi>[fr]Bonjour[en]Hello</multi>', "<multi>[fr]Salut le monde.[en]Hi world.</multi>", ''),
+			art(11, 1, 'Lien', "<multi>[fr]Voir [ici->art10].[en]See [here->art10].</multi>", '')),
 	),
 ));
 list($r, $dest) = lancer('multi', array('schema_urls' => 'hierarchique'));
@@ -149,6 +197,14 @@ t_ok(strpos($en, 'Hi world') !== false and strpos($en, 'Salut') === false, 'mult
 t_ok(strpos($fr, 'title: "Bonjour"') !== false, 'multi : titre fr', $fr);
 t_ok(strpos($en, 'title: "Hello"') !== false, 'multi : titre en', $en);
 $sys = file_get_contents("$dest/user/config/system.yaml");
+$e11 = index($dest, 'article', 11);
+$l_fr = file_get_contents("$dest/user/pages/{$e11['dossier']}/article.fr.md");
+$l_en = file_get_contents("$dest/user/pages/{$e11['dossier']}/article.en.md");
+t_ok(preg_match('~\]\(/[^/)]+[^)]*\)~', $l_fr) and strpos($l_fr, '](/en/') === false, 'multi : lien fr sans préfixe de langue', $l_fr);
+t_ok(strpos($l_en, '](/en/') !== false, 'multi : lien en avec préfixe /en', $l_en);
+list($r, $dest_s) = lancer('multi-stable', array('schema_urls' => 'hierarchique', 'liens_stables' => true));
+$e11 = index($dest_s, 'article', 11);
+t_ok(strpos(file_get_contents("$dest_s/user/pages/{$e11['dossier']}/article.en.md"), '](spip:article/10)') !== false, 'multi : lien stable dans la version en (préfixe retiré)');
 t_ok(strpos($sys, 'languages:') !== false and strpos($sys, 'include_default_lang: false') !== false, 'multi : config languages', $sys);
 t_ok(strpos($sys, 'default_lang: "fr"') !== false, 'multi : default_lang fr', $sys);
 t_ok(strpos($sys, '- "en"') !== false, 'multi : en supporté', $sys);
