@@ -98,22 +98,34 @@ t_ok(strpos(sptg_rapport_texte($r, array('export_name' => 'demo'), ''), 'non act
 
 // thème réutilisé qui comporte déjà les helpers (généré une première fois, puis contenu seul)
 $d2 = t_tmp('stables-reuse');
-sptg_generer_socle("$d2/demo/user/themes/demo-theme/", 'demo-theme', array('CLASSE' => 'DemoTheme', 'LANGUE_SITE' => 'fr'));
+sptg_generer_socle("$d2/user/themes/demo-theme/", 'demo-theme', array('CLASSE' => 'DemoTheme', 'LANGUE_SITE' => 'fr'));
 $ouvert = sptg_exporter(array(
 	'export_name' => 'demo', 'dossier_destination' => $d2, 'vider' => true, 'objets' => array('article', 'rubrique'), 'secteurs' => array(1, 2, 3),
 	'statuts' => array('publie'), 'creer_zip' => false, 'schema_urls' => 'hierarchique', 'liens_stables' => true, 'generer_theme' => false,
 ));
-$e10 = t_json("$d2/demo/user/data/spip-id/article/10.json");
-$page10 = file_get_contents("$d2/demo/user/pages/{$e10['dossier']}/article.md");
+$e10 = t_json("$d2/user/data/spip-id/article/10.json");
+$page10 = file_get_contents("$d2/user/pages/{$e10['dossier']}/article.md");
 t_ok(strpos($page10, '](spip:article/11)') !== false, 'stables : thème réutilisé compatible → spip:', $page10);
 t_eq($ouvert['moteur_redirections'], 'resolveur', 'stables : thème réutilisé → résolveur d\'anciennes URL');
-t_ok(is_file("$d2/demo/user/themes/demo-theme/demo-theme.php"), 'stables : thème réutilisé non supprimé par « vider »');
+t_ok(is_file("$d2/user/themes/demo-theme/demo-theme.php"), 'stables : thème réutilisé non supprimé par « vider »');
 
 // option désactivée : routes absolues
 list($r, $dest) = lancer('stables-non', array('schema_urls' => 'hierarchique'));
 $e10 = index($dest, 'article', 10);
 t_ok(strpos(file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md"), '](spip:') === false, 'stables : désactivé par défaut');
 t_eq($r['liens_stables'], '', 'stables : rien dans le rapport si non demandé');
+
+
+// ------------------------------------------------ 1c. nom d'export et destination indépendants
+list($r, $dest) = lancer('nom-dest', array('export_name' => 'autre-nom', 'schema_urls' => 'hierarchique'));
+t_ok(is_dir("$dest/user/pages") and rtrim($r['racine'], '/') === rtrim($dest, '/'), 'destination : l\'export est écrit directement dans le dossier de destination');
+t_ok(!is_dir("$dest/autre-nom"), 'destination : pas de sous-dossier du nom d\'export');
+t_ok(is_dir("$dest/user/themes/autre-nom-theme"), 'nom d\'export : nomme le thème');
+t_eq($r['rapport'], 'autre-nom-rapport.md', 'nom d\'export : nomme le rapport');
+// destination par défaut si aucune n'est donnée
+$def = sptg_exporter(array('export_name' => 'essai-defaut', 'objets' => array('rubrique'), 'secteurs' => array(1), 'statuts' => array('publie'), 'creer_zip' => false, 'vider' => true));
+t_eq(rtrim($def['racine'], '/'), sptg_destination_defaut('essai-defaut'), 'destination par défaut : <tmp>/grav/<nom>');
+t_ok(is_dir($def['racine'] . 'user/pages'), 'destination par défaut : export écrit');
 
 // ------------------------------------------------ 2. schéma « spip » avec URL arborescentes
 sptg_scenario(array(

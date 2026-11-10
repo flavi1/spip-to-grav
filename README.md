@@ -13,14 +13,14 @@ Copier ce dépôt dans `plugins/spip_to_grav/` (ou `plugins-dist/`), activer le 
 
 ## Première utilisation : parcourir le résultat dans un navigateur
 
-- Dossier de destination : sous la racine web (ex. `<spip>/grav-test`), jamais dans `tmp/` (protégé par un `.htaccess` de SPIP), accessible en écriture au serveur web. Avec « installer la dernière version de Grav » et un dossier vide, `destination/<nom-de-l-export>/` reçoit Grav complet.
+- Dossier de destination : pour parcourir le résultat dans un navigateur, un dossier sous la racine web (ex. `<spip>/grav-test`) et non le `tmp/` de SPIP (protégé par un `.htaccess`, d'où l'intérêt de le changer du défaut), accessible en écriture au serveur web. Avec « installer la dernière version de Grav » et un dossier vide, la destination reçoit Grav complet.
 - Grav dans un sous-dossier : les liens et images Markdown sont préfixés par Grav ; le HTML brut (contenus gardés en HTML) est préfixé par le thème à la sortie (`prefixerRacine`). L'administration n'est pas touchée.
 - Documents joints : copiés dans le dossier de la page et servis par Grav via la route de la page ; seules les extensions connues de Grav sont servies, les autres (odt, csv, epub…) sont déclarées dans `user/config/media.yaml` (ou données à fusionner dans le rapport si Grav était déjà installé).
 - Images : dossier partagé `/images/…` (servi directement) ou `/IMG/…` copié à la racine de Grav (mode IMG).
 
 ## Destination
 
-- Par défaut : `/tmp/grav/<export_name>/user/{pages,themes}`.
+- Le dossier de destination est la **racine de Grav** (celui qui contient `user/`), indépendant du nom d'export ; par défaut `<tmp de SPIP>/grav/<export_name>` (chemin absolu). Le nom d'export ne sert qu'à nommer le thème (`<export_name>-theme`), le rapport et le zip. Une destination doit être une installation Grav, un dossier vide ou inexistant, ou contenir déjà `user/` ; tout autre dossier non vide est refusé.
 - Le dossier de destination est modifiable. S'il contient une installation Grav (`user/`, `system/`, `index.php`), l'export s'y fait directement ; si `user/pages` n'est pas vide (ou si le thème du même nom existe), il faut cocher « vider » : `user/pages` est vidé et le thème du même nom écrasé. Les fichiers de configuration d'une installation existante ne sont jamais modifiés : le rapport donne le YAML à fusionner (taxonomies, thème, redirections).
 - Le thème s'appelle `<export_name>-theme` par défaut ; on peut n'exporter que les pages.
 - Le zip est optionnel et n'est créé que si la vérification n'a relevé aucun écart.

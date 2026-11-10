@@ -121,16 +121,29 @@ function sptg_detecter_grav($dir) {
 }
 
 /**
- * Résout la racine de l'export (qui contient user/).
+ * Racine de l'export : le dossier de destination lui-même (celui qui contient ou contiendra user/).
+ * Le nom d'export est indépendant : il ne nomme que le thème, le rapport et le zip.
  *
- * @return array [racine, est_installation]
+ * @return array [racine (avec slash final), est_installation_grav]
  */
-function sptg_cible($dest, $export_name) {
+function sptg_cible($dest) {
 	$dest = rtrim($dest, '/\\');
-	if (sptg_detecter_grav($dest)) {
-		return array($dest . '/', true);
-	}
-	return array($dest . '/' . $export_name . '/', false);
+	return array($dest . '/', sptg_detecter_grav($dest));
+}
+
+/** Dossier de destination proposé par défaut : <tmp de SPIP>/grav/<nom_export> (chemin absolu) */
+function sptg_destination_defaut($export_name) {
+	$tmp = defined('_DIR_TMP') ? realpath(_DIR_TMP) : false;
+	return rtrim($tmp ?: sys_get_temp_dir(), '/\\') . '/grav/' . $export_name;
+}
+
+/**
+ * Une destination peut-elle recevoir l'export ? Grav, dossier vide ou inexistant, ou dossier contenant déjà user/.
+ * Un autre dossier non vide (racine d'un site, /var/www…) est refusé : l'export y écrirait user/, themes…
+ */
+function sptg_destination_acceptable($dest) {
+	$dest = rtrim($dest, '/\\');
+	return !sptg_dossier_non_vide($dest) or sptg_detecter_grav($dest) or is_dir($dest . '/user');
 }
 
 /** Contrôle de sécurité sur un chemin de destination saisi */
@@ -505,7 +518,7 @@ function sptg_exporter(array $o) {
 	@set_time_limit(0);
 
 	$o += array(
-		'export_name' => 'spip2grav', 'dossier_destination' => '/tmp/grav', 'vider' => false,
+		'export_name' => 'spip2grav', 'dossier_destination' => '', 'vider' => false,
 		'objets' => array(), 'secteurs' => array(), 'statuts' => array('publie'),
 		'generer_theme' => true, 'nom_theme' => '', 'markdown' => true, 'verifier' => true,
 		'creer_zip' => false, 'mode_images' => 'partage',
@@ -517,6 +530,9 @@ function sptg_exporter(array $o) {
 		$o['schema_urls'] = 'spip';
 	}
 	$export_name = $o['export_name'];
+	if ($o['dossier_destination'] === '') {
+		$o['dossier_destination'] = sptg_destination_defaut($export_name);
+	}
 	$slug_theme = $o['nom_theme'] !== '' ? $o['nom_theme'] : $export_name . '-theme';
 
 	$rapport = array(
@@ -530,7 +546,7 @@ function sptg_exporter(array $o) {
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
-	list($racine, $est_install) = sptg_cible($o['dossier_destination'], $export_name);
+	list($racine, $est_install) = sptg_cible($o['dossier_destination']);
 	if ($o['installer_grav']) {
 		$g = sptg_grav_installer($racine);
 		$rapport['grav'] = $g['message'];

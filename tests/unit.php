@@ -414,4 +414,24 @@ foreach (array('publie', 'prop', 'prepa', 'refuse', 'poubelle') as $st) {
 }
 t_eq($manque, array(), 'SPIP : toutes les chaînes de langue utilisées existent dans lang/sptg_fr.php');
 
+// ---------------------------------------------------------------- destination indépendante du nom d'export
+$dd = t_tmp('dest');
+t_eq(sptg_cible("$dd/a/"), array("$dd/a/", false), 'cible : la destination est la racine (pas de sous-dossier du nom d\'export)');
+t_eq(sptg_destination_defaut('mon-site'), rtrim(realpath(_DIR_TMP), '/') . '/grav/mon-site', 'destination par défaut : <tmp de SPIP>/grav/<nom>');
+t_ok(sptg_chemin_valide(sptg_destination_defaut('mon-site')), 'destination par défaut : chemin absolu valide');
+t_ok(sptg_destination_acceptable("$dd/inexistant"), 'destination : inexistante acceptée');
+mkdir("$dd/vide");
+t_ok(sptg_destination_acceptable("$dd/vide"), 'destination : vide acceptée');
+mkdir("$dd/autre");
+file_put_contents("$dd/autre/index.php", '<?php');
+t_ok(!sptg_destination_acceptable("$dd/autre"), 'destination : dossier non vide quelconque refusé');
+mkdir("$dd/avec-user/user", 0775, true);
+file_put_contents("$dd/avec-user/x", '1');
+t_ok(sptg_destination_acceptable("$dd/avec-user"), 'destination : dossier contenant déjà user/ accepté');
+mkdir("$dd/grav/user", 0775, true);
+mkdir("$dd/grav/system");
+file_put_contents("$dd/grav/index.php", '<?php');
+t_eq(sptg_cible("$dd/grav"), array("$dd/grav/", true), 'cible : installation Grav détectée');
+t_ok(sptg_destination_acceptable("$dd/grav"), 'destination : installation Grav acceptée');
+
 t_fin('unit');

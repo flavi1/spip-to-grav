@@ -28,7 +28,7 @@ function formulaires_exporter_grav_charger_dist() {
 
 	$nom_site = isset($GLOBALS['meta']['nom_site']) ? $GLOBALS['meta']['nom_site'] : '';
 	$export_name = _request('export_name') ?: (sptg_slug($nom_site) ?: 'spip2grav');
-	$dest = _request('dossier_destination') ?: '/tmp/grav';
+	$dest = _request('dossier_destination') ?: sptg_destination_defaut($export_name);
 
 	// schémas d'URL : « identique à SPIP » n'a de sens que pour des URL de type chemin
 	$schemas = array();
@@ -104,8 +104,10 @@ function formulaires_exporter_grav_verifier_dist() {
 	$dest = (string) _request('dossier_destination');
 	if (!sptg_chemin_valide($dest)) {
 		$erreurs['dossier_destination'] = _T('sptg:erreur_destination');
+	} elseif (!sptg_destination_acceptable($dest)) {
+		$erreurs['dossier_destination'] = _T('sptg:erreur_destination_non_vide');
 	} elseif (!isset($erreurs['export_name'])) {
-		list($racine, $install) = sptg_cible($dest, $name);
+		list($racine, $install) = sptg_cible($dest);
 		$pages = $racine . 'user/pages';
 		$slug_theme = $theme !== '' ? $theme : $name . '-theme';
 		$conflits = array();
