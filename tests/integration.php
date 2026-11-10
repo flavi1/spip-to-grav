@@ -69,7 +69,7 @@ $yaml = glob("$dest/user/config/*.yaml");
 t_ok(!is_file("$dest/user/config/system.yaml") or strpos(file_get_contents("$dest/user/config/system.yaml"), 'languages:') === false, 'mono : pas de bloc languages');
 
 
-// ------------------------------------------------ 1b. liens stables (spip:type/id)
+// ------------------------------------------------ 1b. liens stables (idx:type/id)
 sptg_scenario(array(
 	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
 	'rows' => array(
@@ -80,8 +80,8 @@ sptg_scenario(array(
 list($r, $dest) = lancer('stables', array('schema_urls' => 'hierarchique', 'liens_stables' => true));
 $e10 = index($dest, 'article', 10);
 $page10 = file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md");
-t_ok(strpos($page10, '](spip:article/11)') !== false, 'stables : lien vers un article', $page10);
-t_ok(strpos($page10, '](spip:rubrique/2#haut)') !== false, 'stables : lien vers une rubrique avec ancre', $page10);
+t_ok(strpos($page10, '](idx:article/11)') !== false, 'stables : lien vers un article', $page10);
+t_ok(strpos($page10, '](idx:rubrique/2#haut)') !== false, 'stables : lien vers une rubrique avec ancre', $page10);
 t_eq($r['ecarts'], array(), 'stables : aucun écart de vérification');
 t_eq($r['liens_stables'], 'actifs', 'stables : rapport');
 $thdir = "$dest/user/themes/demo-theme";
@@ -91,7 +91,7 @@ t_eq(sptg_theme_helpers($thdir)['etat'], 'ok', 'stables : le thème généré po
 list($r, $dest) = lancer('stables-sans', array('schema_urls' => 'hierarchique', 'liens_stables' => true, 'generer_theme' => false));
 $e10 = index($dest, 'article', 10);
 $page10 = file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md");
-t_ok(strpos($page10, '](spip:') === false and preg_match('~\]\(/[a-z0-9/_-]+\)~', $page10), 'stables : repli sur les routes absolues', $page10);
+t_ok(strpos($page10, '](idx:') === false and preg_match('~\]\(/[a-z0-9/_-]+\)~', $page10), 'stables : repli sur les routes absolues', $page10);
 t_ok(strpos($r['liens_stables'], 'non activés') !== false, 'stables : avertissement dans le rapport', $r['liens_stables']);
 t_eq($r['moteur_redirections'], 'site', 'stables : redirections par site.yaml sans helpers');
 t_ok(strpos(sptg_rapport_texte($r, array('export_name' => 'demo'), ''), 'non activés') !== false, 'stables : avertissement dans le rapport texte');
@@ -105,14 +105,14 @@ $ouvert = sptg_exporter(array(
 ));
 $e10 = t_json("$d2/user/data/spip-id/article/10.json");
 $page10 = file_get_contents("$d2/user/pages/{$e10['dossier']}/article.md");
-t_ok(strpos($page10, '](spip:article/11)') !== false, 'stables : thème réutilisé compatible → spip:', $page10);
+t_ok(strpos($page10, '](idx:article/11)') !== false, 'stables : thème réutilisé compatible → idx:', $page10);
 t_eq($ouvert['moteur_redirections'], 'resolveur', 'stables : thème réutilisé → résolveur d\'anciennes URL');
 t_ok(is_file("$d2/user/themes/demo-theme/demo-theme.php"), 'stables : thème réutilisé non supprimé par « vider »');
 
 // option désactivée : routes absolues
 list($r, $dest) = lancer('stables-non', array('schema_urls' => 'hierarchique'));
 $e10 = index($dest, 'article', 10);
-t_ok(strpos(file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md"), '](spip:') === false, 'stables : désactivé par défaut');
+t_ok(strpos(file_get_contents("$dest/user/pages/{$e10['dossier']}/article.md"), '](idx:') === false, 'stables : désactivé par défaut');
 t_eq($r['liens_stables'], '', 'stables : rien dans le rapport si non demandé');
 
 
@@ -216,7 +216,7 @@ t_ok(preg_match('~\]\(/[^/)]+[^)]*\)~', $l_fr) and strpos($l_fr, '](/en/') === f
 t_ok(strpos($l_en, '](/en/') !== false, 'multi : lien en avec préfixe /en', $l_en);
 list($r, $dest_s) = lancer('multi-stable', array('schema_urls' => 'hierarchique', 'liens_stables' => true));
 $e11 = index($dest_s, 'article', 11);
-t_ok(strpos(file_get_contents("$dest_s/user/pages/{$e11['dossier']}/article.en.md"), '](spip:article/10)') !== false, 'multi : lien stable dans la version en (préfixe retiré)');
+t_ok(strpos(file_get_contents("$dest_s/user/pages/{$e11['dossier']}/article.en.md"), '](idx:article/10)') !== false, 'multi : lien stable dans la version en (préfixe retiré)');
 t_ok(strpos($sys, 'languages:') !== false and strpos($sys, 'include_default_lang: false') !== false, 'multi : config languages', $sys);
 t_ok(strpos($sys, 'default_lang: "fr"') !== false, 'multi : default_lang fr', $sys);
 t_ok(strpos($sys, '- "en"') !== false, 'multi : en supporté', $sys);

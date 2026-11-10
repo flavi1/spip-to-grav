@@ -74,7 +74,9 @@ function sptg_blueprint_objet(array $info, $emails) {
 // ---------------------------------------------------------------- helpers d'un thème existant
 
 /** Version d'API thème <-> plugin attendue (doit égaler Grav\Theme\Sptg\Runtime::API ; vérifié par les tests) */
-define('SPTG_API_THEME', 1);
+define('SPTG_API_THEME', 2);
+/** Préfixe des liens stables (doit égaler Runtime::SCHEME dans gabarits/theme/sptg_runtime.php.tpl). */
+define('SPTG_LIEN_SCHEME', 'idx');
 
 /**
  * Un thème déjà présent (réutilisé sans régénération) comporte-t-il nos helpers, et sont-ils assez récents ?

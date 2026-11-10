@@ -85,9 +85,9 @@ Aucun fichier PHP ni Twig du thème n'est écrit à la main dans le code : tous 
 
 ## Liens internes : routes ou liens stables
 
-Par défaut, les liens `[->art12]` deviennent des routes absolues (avec préfixe de langue pour les langues non par défaut en mode `<multi>`). L'option « liens internes stables » écrit `[texte](spip:article/12#ancre)` : le thème résout le lien à l'affichage (`onOutputGenerated`, via l'index `spip-id`), donc déplacer ou renommer une page dans Grav ne casse rien. Dans les pages `<multi>`, le lien suit la langue active ; cible introuvable : `href="#"`.
+Par défaut, les liens `[->art12]` deviennent des routes absolues (avec préfixe de langue pour les langues non par défaut en mode `<multi>`). L'option « liens internes stables » écrit `[texte](idx:article/12#ancre)` : le thème résout le lien à l'affichage (`onOutputGenerated`, via l'index `spip-id`), donc déplacer ou renommer une page dans Grav ne casse rien. Dans les pages `<multi>`, le lien suit la langue active ; cible introuvable : `href="#"`.
 
-Vérifié dans le code de Grav : le traitement des liens de Markdown laisse intact un `href` à schéma inconnu (`spip:article/12#ancre`). La résolution se fait à la sortie et non sur le contenu, car le cache de contenu de Grav figerait les URL. Limite : les plugins qui lisent le contenu hors rendu de page (flux RSS, recherche) voient `spip:` non résolu.
+Vérifié dans le code de Grav : le traitement des liens de Markdown laisse intact un `href` à schéma inconnu (`idx:article/12#ancre`). La résolution se fait à la sortie et non sur le contenu, car le cache de contenu de Grav figerait les URL. Limite : les plugins qui lisent le contenu hors rendu de page (flux RSS, recherche) voient `idx:` non résolu.
 
 **Thème réutilisé.** Le thème est toujours généré une première fois ; ensuite on peut ne régénérer que le contenu. Le plugin ne modifie alors jamais le thème existant, mais le contrôle : il lit `const API` dans son `sptg_runtime.php` et cherche `sptgRuntime` dans son PHP principal. Helpers compatibles : liens stables et résolveur d'anciennes URL actifs. Absents, anciens (thème issu d'une vieille version du plugin) ou retirés : routes absolues à la place, redirections par `site.yaml`, et un avertissement dans le rapport qui dit quoi faire (régénérer le thème).
 

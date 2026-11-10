@@ -21,9 +21,17 @@ class Runtime
     /**
      * Version de l'interface thème <-> plugin spip_to_grav (inc/sptg_theme.php : SPTG_API_THEME).
      * Le plugin la lit dans ce fichier pour savoir si un thème réutilisé sait résoudre les liens
-     * `spip:` et les anciennes URL. À incrémenter quand le plugin exige une nouvelle capacité.
+     * liens stables (`idx:`) et les anciennes URL. À incrémenter quand le plugin exige une nouvelle capacité.
+     * 2 : préfixe des liens stables `idx:` (était `spip:` en API 1).
      */
-    const API = 1;
+    const API = 2;
+
+    /**
+     * Préfixe des liens stables : « cette cible passe par l'index, son URL est calculée à l'affichage ».
+     * Neutre vis-à-vis de SPIP (plugin de liens stables à venir) ; ne doit pas être un flux de Grav
+     * (page:, user:, theme:, image:, asset:, media:, account:, config:…).
+     */
+    const SCHEME = 'idx';
 
     /** @var string */
     private $dir;
@@ -279,7 +287,7 @@ class Runtime
     }
 
     /**
-     * Remplace les liens stables `href="spip:<type>/<id>[#ancre]"` par l'URL actuelle de l'objet.
+     * Remplace les liens stables `href="idx:<type>/<id>[#ancre]"` par l'URL actuelle de l'objet.
      * Cible introuvable : href="#".
      *
      * Appelé à la sortie (onOutputGenerated), pas sur le contenu des pages : le cache de pages de Grav
@@ -287,12 +295,12 @@ class Runtime
      */
     public function resoudreLiens($html, $langue = '')
     {
-        if (strpos((string) $html, 'spip:') === false) {
+        if (strpos((string) $html, self::SCHEME . ':') === false) {
             return $html;
         }
         $cache = array();
         return preg_replace_callback(
-            '/\bhref=(["\'])spip:([a-z_][a-z0-9_]*)\/([0-9]+)(#[^"\']*)?\1/',
+            '/\bhref=(["\'])' . self::SCHEME . ':([a-z_][a-z0-9_]*)\/([0-9]+)(#[^"\']*)?\1/',
             function ($m) use (&$cache, $langue) {
                 $cle = $m[2] . '/' . $m[3];
                 if (!array_key_exists($cle, $cache)) {

@@ -86,7 +86,7 @@ class @@CLASSE@@ extends Theme
 	}
 
 	/**
-	 * Sortie de page : liens stables « spip:type/id » résolus (le cache de contenu de Grav n'est pas concerné) et,
+	 * Sortie de page : liens stables « idx:type/id » résolus (le cache de contenu de Grav n'est pas concerné) et,
 	 * pour un site installé dans un sous-dossier, chemins absolus du HTML brut préfixés par ce sous-dossier.
 	 * L'administration n'est jamais touchée.
 	 */

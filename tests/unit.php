@@ -316,21 +316,23 @@ t_ok(!preg_match("/\n\n\n/", $tw), 'objet : pas de lignes vides en trop', $tw);
 
 // ---------------------------------------------------------------- liens stables
 t_eq(Runtime::API, SPTG_API_THEME, 'API du runtime = API attendue par le plugin');
-$h = '<a href="spip:article/10#x" class="a">A</a> <a href=\'spip:article/999\'>?</a> <a href="/dehors">d</a> <a href="http://x.org/spip:article/10">e</a>';
+t_eq(Runtime::SCHEME, SPTG_LIEN_SCHEME, 'préfixe des liens stables : runtime = plugin');
+t_ok(!in_array(SPTG_LIEN_SCHEME, array('user','cache','log','tmp','backup','environment','system','asset','blueprints','config','plugins','plugin','themes','theme','languages','image','media','page','account','http','https','mailto','tel'), true), 'préfixe des liens stables : pas un flux de Grav');
+$h = '<a href="idx:article/10#x" class="a">A</a> <a href=\'idx:article/999\'>?</a> <a href="/dehors">d</a> <a href="http://x.org/idx:article/10">e</a>';
 $out = $rt()->resoudreLiens($h, 'fr');
 t_ok(strpos($out, 'href="/actu/a#x"') !== false, 'liens stables : résolu avec ancre', $out);
 t_ok(strpos($out, "href='#'") !== false, 'liens stables : cible inconnue → #', $out);
-t_ok(strpos($out, 'href="/dehors"') !== false and strpos($out, 'http://x.org/spip:article/10') !== false, 'liens stables : autres liens intacts', $out);
-t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', 'en'), '<a href="/en/actu">r</a>', 'liens stables : langue courante (pages <multi>)');
-t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', 'fr'), '<a href="/actu">r</a>', 'liens stables : langue par défaut');
-t_eq($rt()->resoudreLiens('<a href="spip:rubrique/1">r</a>', ''), '<a href="/actu">r</a>', 'liens stables : sans langue active');
+t_ok(strpos($out, 'href="/dehors"') !== false and strpos($out, 'http://x.org/idx:article/10') !== false, 'liens stables : autres liens intacts', $out);
+t_eq($rt()->resoudreLiens('<a href="idx:rubrique/1">r</a>', 'en'), '<a href="/en/actu">r</a>', 'liens stables : langue courante (pages <multi>)');
+t_eq($rt()->resoudreLiens('<a href="idx:rubrique/1">r</a>', 'fr'), '<a href="/actu">r</a>', 'liens stables : langue par défaut');
+t_eq($rt()->resoudreLiens('<a href="idx:rubrique/1">r</a>', ''), '<a href="/actu">r</a>', 'liens stables : sans langue active');
 t_eq($rt()->resoudreLiens('rien', 'fr'), 'rien', 'liens stables : texte sans lien');
 t_eq($rt()->resoudreLiens('<a href="SPIP:Article/10">r</a>', 'fr'), '<a href="SPIP:Article/10">r</a>', 'liens stables : schéma en majuscules non traité (Grav le laisse tel quel)');
 
 $inv = array('/actu' => 'rubrique/1', '/actu/a' => 'article/10', '/b' => 'article/11');
-t_eq(sptg_liens_stables('<a href="/actu/a#n1">x</a>', $inv), '<a href="spip:article/10#n1">x</a>', 'export : route → spip: avec ancre');
-t_eq(sptg_liens_stables('<a href="/en/b">x</a>', $inv, '/en'), '<a href="spip:article/11">x</a>', 'export : préfixe de langue retiré');
-t_eq(sptg_liens_stables('<a href="/b">x</a>', $inv, '/en'), '<a href="spip:article/11">x</a>', 'export : route sans préfixe acceptée');
+t_eq(sptg_liens_stables('<a href="/actu/a#n1">x</a>', $inv), '<a href="idx:article/10#n1">x</a>', 'export : route → idx: avec ancre');
+t_eq(sptg_liens_stables('<a href="/en/b">x</a>', $inv, '/en'), '<a href="idx:article/11">x</a>', 'export : préfixe de langue retiré');
+t_eq(sptg_liens_stables('<a href="/b">x</a>', $inv, '/en'), '<a href="idx:article/11">x</a>', 'export : route sans préfixe acceptée');
 t_eq(sptg_liens_stables('<a href="/inconnue">x</a> <a href="http://a/b">y</a> <a href="#ancre">z</a> <a href="">v</a>', $inv), '<a href="/inconnue">x</a> <a href="http://a/b">y</a> <a href="#ancre">z</a> <a href="">v</a>', 'export : autres liens intacts');
 t_eq(sptg_liens_internes('[x->art11] [y->rub1#a]', array('article' => array(11 => '/b'), 'rubrique' => array(1 => '/actu')), '/en'), '[x->/en/b] [y->/en/actu#a]', 'liens internes : préfixe de langue');
 

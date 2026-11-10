@@ -211,7 +211,7 @@ function sptg_urls_a_parametres() {
 
 /**
  * Liens stables : les liens internes déjà remplacés par des routes (sptg_liens_internes) deviennent
- * `spip:<type>/<id>[#ancre]`, résolus à l'affichage par le thème. Seuls les href qui sont exactement la
+ * `idx:<type>/<id>[#ancre]` (SPTG_LIEN_SCHEME), résolus à l'affichage par le thème. Seuls les href qui sont exactement la
  * route d'un objet exporté (préfixe de langue compris) sont touchés.
  *
  * @param array $inverse route (sans préfixe de langue) => « type/id »
@@ -225,7 +225,7 @@ function sptg_liens_stables($html, array $inverse, $prefixe = '') {
 				$u = substr($u, strlen($prefixe));
 			}
 			if ($u !== '' and $u[0] === '/' and isset($inverse[$u])) {
-				return 'href=' . $m[1] . 'spip:' . $inverse[$u] . (isset($m[3]) ? $m[3] : '') . $m[1];
+				return 'href=' . $m[1] . SPTG_LIEN_SCHEME . ':' . $inverse[$u] . (isset($m[3]) ? $m[3] : '') . $m[1];
 			}
 			return $m[0];
 		},
@@ -482,7 +482,7 @@ function sptg_rendre_texte_interne($raw, array &$ctx, $champ) {
 		}
 	}
 
-	// liens stables (option) : routes -> spip:type/id, résolus par le thème
+	// liens stables (option) : routes -> idx:type/id, résolus par le thème
 	if (!empty($ctx['stables']) and !empty($ctx['inverse'])) {
 		$html = sptg_liens_stables($html, $ctx['inverse'], isset($ctx['prefixe']) ? $ctx['prefixe'] : '');
 	}
@@ -1240,7 +1240,7 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "- Types de média ajoutés à Grav (user/config/media.yaml) : " . implode(', ', $r['media_types']) . "\n";
 	}
 	if ($r['liens_stables']) {
-		$t .= "- Liens internes stables (spip:type/id) : " . $r['liens_stables'] . "\n";
+		$t .= "- Liens internes stables (idx:type/id) : " . $r['liens_stables'] . "\n";
 	}
 	$t .= "- Schéma d'URL : " . $r['schema_urls'] . " ; index des identifiants : " . $r['index'] . " entrée(s) dans user/data/spip-id\n";
 	$t .= "- Anciennes URL : " . $r['redirections'] . " (moteur : " . ($r['moteur_redirections'] ?: 'aucun') . ")"
