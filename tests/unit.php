@@ -454,16 +454,20 @@ $aut = array(
 	array('id_auteur' => 7, 'nom' => 'Admin Grav', 'login' => 'admin', 'email' => 'admin@exemple.org', 'statut' => '1comite'),
 	array('id_auteur' => 8, 'nom' => 'Mail cassé', 'login' => 'mc', 'email' => 'pas-un-mail', 'statut' => '1comite'),
 );
+$aut[] = array('id_auteur' => 9, 'nom' => 'Admin restreint', 'login' => 'restreint', 'email' => 'r@exemple.org', 'statut' => '0minirezo', 'restreint' => true);
 $c = sptg_comptes_construire($aut, array('admin' => true), array('admin@exemple.org' => true));
-t_eq(array_keys($c['comptes']), array('jean', 'jean-2'), 'comptes : seuls admins/rédacteurs avec email valide et unique');
+t_eq(array_keys($c['comptes']), array('jean', 'jean-2', 'restreint'), 'comptes : seuls admins/rédacteurs avec email valide et unique');
 t_eq($c['comptes']['jean']['title'], 'Administrateur', 'comptes : intitulé administrateur');
+t_eq($c['comptes']['jean']['access'], sptg_comptes_acces_admin(), 'comptes : administrateur = super-admin Grav');
+t_ok($c['comptes']['jean']['access']['admin']['super'] === true and $c['comptes']['jean']['access']['api']['super'] === true, 'comptes : admin.super et api.super');
 t_eq($c['comptes']['jean-2']['title'], 'Rédacteur', 'comptes : intitulé rédacteur ; identifiant en double suffixé');
 t_eq($c['comptes']['jean']['email'], 'Jean@Exemple.org', 'comptes : email conservé tel quel');
 t_eq($c['comptes']['jean']['state'], 'enabled', 'comptes : activé');
 t_ok(!isset($c['comptes']['jean']['password']) and !isset($c['comptes']['jean']['hashed_password']), 'comptes : aucun mot de passe');
-$acc = $c['comptes']['jean']['access'];
+$acc = $c['comptes']['jean-2']['access'];
 t_ok($acc['api']['access'] === true and $acc['api']['pages']['write'] === true and $acc['api']['media']['write'] === true and $acc['site']['login'] === true, 'comptes : droits de rédacteur admin2');
 t_ok(!isset($acc['api']['super']) and !isset($acc['admin']) and !isset($acc['api']['config']) and !isset($acc['api']['users']) and !isset($acc['api']['system']), 'comptes : aucun droit d\'administration');
+t_eq($c['comptes']['restreint']['access'], sptg_comptes_acces(), 'comptes : administrateur restreint = droits de rédacteur');
 t_eq(array_column($c['ignores'], 'id_auteur'), array(3, 4, 7, 8), 'comptes : ignorés = doublon, sans email, email déjà pris, email invalide');
 
 t_fin('unit');

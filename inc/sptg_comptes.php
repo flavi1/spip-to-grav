@@ -25,8 +25,20 @@ function sptg_comptes_statuts() {
 }
 
 /**
+ * Droits d'un administrateur : super-administrateur de Grav (admin classique et admin2).
+ */
+function sptg_comptes_acces_admin() {
+	return array(
+		'site' => array('login' => true),
+		'admin' => array('login' => true, 'super' => true),
+		'api' => array('access' => true, 'super' => true),
+	);
+}
+
+/**
  * Droits d'un rédacteur dans admin2 : connexion, lecture/écriture des pages et des médias.
  * Pas de droits de configuration, de plugins, d'utilisateurs ni de super-administration.
+ * Les administrateurs SPIP (non restreints) reçoivent à la place sptg_comptes_acces_admin().
  */
 function sptg_comptes_acces() {
 	return array(
@@ -113,21 +125,32 @@ function sptg_comptes_construire(array $auteurs, array $existants = array(), arr
 		$comptes[$u] = array(
 			'email' => $email,
 			'fullname' => $nom !== '' ? $nom : $u,
-			'title' => $statuts[$a['statut']],
+			'title' => $statuts[$a['statut']] . (($a['statut'] === '0minirezo' and !empty($a['restreint'])) ? ' restreint' : ''),
 			'state' => 'enabled',
-			'access' => sptg_comptes_acces(),
+			'access' => ($a['statut'] === '0minirezo' and empty($a['restreint'])) ? sptg_comptes_acces_admin() : sptg_comptes_acces(),
 		);
 	}
 	return array('comptes' => $comptes, 'ignores' => $ignores);
 }
 
-/** Auteurs exportables (administrateurs et rédacteurs). */
+/**
+ * Auteurs exportables (administrateurs et rédacteurs). `restreint` : administrateur limité à des rubriques
+ * (il n'est pas super-administrateur de Grav : un administrateur restreint n'a pas la main sur tout le site).
+ */
 function sptg_comptes_lire() {
-	return sql_allfetsel(
+	$auteurs = sql_allfetsel(
 		'id_auteur, nom, login, email, statut',
 		'spip_auteurs',
 		sql_in('statut', array_keys(sptg_comptes_statuts()))
 	) ?: array();
+	$restreints = array();
+	foreach (sql_allfetsel('id_auteur', 'spip_auteurs_liens', "objet='rubrique'") ?: array() as $l) {
+		$restreints[(int) $l['id_auteur']] = true;
+	}
+	foreach ($auteurs as &$a) {
+		$a['restreint'] = isset($restreints[(int) $a['id_auteur']]);
+	}
+	return $auteurs;
 }
 
 /** Comptes déjà présents dans la destination : [identifiants => true, emails en minuscules => true] */
