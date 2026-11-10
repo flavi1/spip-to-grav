@@ -464,4 +464,33 @@ $urls17 = array_column($r17['liens_bruts'], 'url');
 t_eq($urls17, array('/spip.php?page=contact'), 'liens spip : seul page=contact est notifié (autre site ignoré)');
 t_ok(empty($r17['erreur']), 'liens spip : non bloquant');
 
+// ------------------------------------------------ 18. publication différée (publish_date)
+foreach (array('non' => true, 'oui' => false) as $post_dates => $differe) {
+	$fut = date('Y-m-d H:i:s', time() + 86400 * 30);
+	$a_fut = art(10, 1, 'Futur'); $a_fut['date'] = $fut;
+	$a_pas = art(11, 1, 'Passe');
+	sptg_scenario(array(
+		'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+		'meta' => array('nom_site' => 'S', 'descriptif_site' => '', 'langue_site' => 'fr', 'post_dates' => $post_dates),
+		'rows' => array('spip_rubriques' => array(rub(1, 0, 'Actu')), 'spip_articles' => array($a_fut, $a_pas)),
+	));
+	$dest18 = sys_get_temp_dir() . '/sptg_t18_' . $post_dates . getmypid();
+	$r18 = sptg_exporter(array(
+		'export_name' => 'demo', 'dossier_destination' => $dest18, 'objets' => array('article', 'rubrique'),
+		'secteurs' => array(1), 'statuts' => array('publie'), 'creer_comptes' => false, 'creer_zip' => false, 'vider' => true,
+	));
+	$mds = glob("$dest18/user/pages/*/*/*.md") ?: array();
+	$futur = $passe = '';
+	foreach ($mds as $f) {
+		$c = file_get_contents($f);
+		if (preg_match('/^title: ["\']?Futur/m', $c)) { $futur = $c; }
+		if (preg_match('/^title: ["\']?Passe/m', $c)) { $passe = $c; }
+	}
+	t_ok($futur !== '' and $passe !== '', "publish_date ($post_dates) : pages trouvées", implode(',', $mds));
+	t_eq(strpos($futur, 'publish_date:') !== false, $differe, "publish_date ($post_dates) : article futur");
+	t_ok(strpos($passe, 'publish_date:') === false, "publish_date ($post_dates) : article passé sans publish_date");
+	t_eq(isset($r18['alertes']['Publication différée (publish_date, la page apparaîtra à cette date)']), $differe, "publish_date ($post_dates) : rapport");
+	sptg_scenario(array());
+}
+
 t_fin('integration');

@@ -108,6 +108,22 @@ function sptg_cle_tri($titre) {
 	return array($n === '' ? PHP_INT_MAX : (int) $n, strtolower(sptg_titre_propre($titre)));
 }
 
+/**
+ * La page doit-elle rester masquée jusqu'à sa date ? Seuls les articles sont concernés par la meta
+ * SPIP `post_dates` (« non » = les articles datés du futur ne sont pas affichés).
+ */
+function sptg_publication_differee(array $info, $date, $maintenant = null) {
+	if ($info['table'] !== 'spip_articles') {
+		return false;
+	}
+	$meta = isset($GLOBALS['meta']['post_dates']) ? $GLOBALS['meta']['post_dates'] : 'oui';
+	if ($meta !== 'non') {
+		return false;
+	}
+	$t = strtotime($date);
+	return $t !== false and $t > ($maintenant === null ? time() : $maintenant);
+}
+
 function sptg_date($d) {
 	if (!$d or strncmp($d, '0000', 4) === 0) {
 		return null;
@@ -1173,6 +1189,13 @@ function sptg_exporter(array $o) {
 				$header['date'] = $date;
 			}
 			$header['published'] = $publie;
+			// Publication différée : SPIP ne montre un article publié à date future que si la meta post_dates
+			// vaut « oui » (défaut). Avec « non », il apparaît à sa date : c'est le publish_date de Grav
+			// (option system.pages.publish_dates, active par défaut).
+			if ($publie and $date and sptg_publication_differee($info, $date)) {
+				$header['publish_date'] = $date;
+				$rapport['alertes']['Publication différée (publish_date, la page apparaîtra à cette date)'][] = $it['pub'] . ' → ' . $date;
+			}
 			// identité stable, invisible dans l'admin (clés absentes des blueprints ; admin2 fusionne les
 			// champs modifiés sur l'entête existant : elles sont conservées à chaque enregistrement)
 			$header['spip_id'] = $id;

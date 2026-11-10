@@ -105,6 +105,10 @@ Option « Créer un compte de rédacteur Grav (admin2) pour chaque auteur » (co
 
 Prérequis côté Grav (rappelés dans le rapport) : plugins `login`, `email`, `api`, `admin2`, un expéditeur configuré (`plugins.email.from` et moteur d'envoi), idéalement `plugins.login.site_host`. Sans envoi d'email, le lien ne part pas : l'administrateur peut alors définir le mot de passe lui-même.
 
+## Publication différée (`publish_date`)
+
+Grav masque une page jusqu'à son `publish_date` (option `system.pages.publish_dates`, active par défaut ; champ déjà présent dans l'onglet Options d'admin2). L'export le renseigne pour les **articles publiés dont la date est dans le futur, quand la meta SPIP `post_dates` vaut « non »** (SPIP les cache alors jusqu'à leur date). Avec `post_dates` à « oui » (défaut de SPIP), ces articles sont visibles dans SPIP : ils le restent dans Grav, sans `publish_date`. Les pages concernées sont listées dans « Points d'attention » du rapport. Le test se fait à la date de l'export : un article déjà passé n'a pas de `publish_date`.
+
 ## Champs Extras (plugin SPIP « Champs Extras »)
 
 Sources lues : plugins `cextras` et `iextras` 4.3. Chaque champ extra est une colonne SQL ajoutée à la table de l'objet ; sa définition (saisie : type, libellé, explication, obligatoire, défaut, valeurs proposées, fieldset) vient du pipeline `declarer_champs_extras` (qui inclut les champs créés avec l'interface). L'export :
