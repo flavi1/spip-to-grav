@@ -42,11 +42,31 @@ Modèles `<imgN>`, `<docN>`, `<embN>` : images selon le mode de stockage choisi,
 
 Pour chaque texte : HTML de `propre()` → Markdown → HTML (rendu qui reproduit Parsedown pour le sous-ensemble émis) → comparaison des deux HTML normalisés. En cas d'écart, le texte est conservé en HTML (`process: markdown: false` pour le corps, champ listé dans `spip_html` sinon) et l'écart est consigné dans le rapport avec : attendu, obtenu, Markdown produit, source SPIP. Les liens internes restés en `spip.php?…` sont aussi listés.
 
-Pour améliorer le convertisseur : coller un échantillon du rapport dans `tests/fixtures/mon_cas.html` (fragment HTML tel que produit par `propre()`), puis `php tests/run.php`. Les attentes de Markdown exact sont dans `tests/expected.php`.
+Pour améliorer le convertisseur : coller un échantillon du rapport dans `tests/fixtures/mon_cas.html` (fragment HTML tel que produit par `propre()`), puis `php tests/run.php` (lance aussi `tests/unit.php` et `tests/integration.php`). Les attentes de Markdown exact sont dans `tests/expected.php`.
 
-## URL et redirections
+## Installer / mettre à jour Grav
 
-Les anciennes URL SPIP qui sont des chemins (URLs propres, arborescentes, `.html`) génèrent des `redirects` Grav. Si le site génère des URL à paramètres (`spip.php?page=article&id_article=12`), Grav ne peut pas les rediriger : le formulaire le détecte et demande de configurer d'abord des URL propres ou arborescentes (Configuration → Gestion des URL), ou de décocher l'option.
+Case « installer la dernière version de Grav à cet emplacement » : sans effet si Grav est déjà à jour ; mise à jour (`bin/gpm selfupgrade`) si une version plus ancienne est détectée, sauf changement de version majeure (le guide de migration de getgrav.org s'applique alors). Sur un dossier vide, Grav (grav-admin) est téléchargé et extrait ; un dossier non vide sans Grav est refusé. Nécessite l'accès réseau du serveur SPIP ; en cas d'échec, l'export continue et le rapport l'indique.
+
+## URL, routage et redirections
+
+L'arborescence des dossiers (celle de l'admin Grav, préfixes numériques = ordre d'affichage) est **découplée** des URL publiques : la route publique est posée dans l'entête de chaque page (`routes: default:`) quand elle diffère de la route des dossiers, et l'export règle `pages.redirect_default_route: 301` dans `user/config/system.yaml` pour que l'ancienne route redirige vers la route publique.
+
+Schémas au choix : `spip` (même URL que SPIP quand c'est possible, sinon hiérarchique), `hierarchique`, `hierarchique_type` (`/rubrique/article/mon-article`), `plat_type` (`/article/mon-article`). Deux routes identiques : la seconde reçoit le suffixe `-2` et le cas est listé dans le rapport.
+
+Chaque page porte `spip_id`, `spip_type`, `spip_lang` (et `spip_trad`) dans son entête : l'identité d'une page ne dépend ni de son dossier ni de son préfixe d'ordre.
+
+### Index `user/data/spip-id/`
+
+- `<type>/<id>.json` : un fichier par objet (`type`, `id`, `lang`, `trad` = `{langue: id}`, `dossier`, `langues` pour les `<multi>`).
+- Auto-réparation (thème) : si l'entrée pointe vers un dossier absent ou vers une page d'un autre (type, id), le thème retrouve la page par parcours, réécrit l'entrée et déplace l'ancienne dans `_legacy/<type>/<id>.json`.
+- `_legacy/urls/<sha1>.json` : anciennes URL SPIP (URL courante, historique `spip_urls`, URL à paramètres comme `spip.php?article12`) → (type, id). Le thème les résout dans `onPageNotFound` et redirige en 301 vers la page actuelle. Sans thème, les chemins (sans paramètres) deviennent des `redirects` de `site.yaml`. Les chemins reconstitués d'après l'historique des URL arborescentes sont approximatifs et comptés dans le rapport.
+
+## Langues
+
+- Objets avec traductions SPIP (`id_trad`) : un dossier par objet, avec sa route exacte ; l'index liste les traductions ; le thème injecte `<link rel="alternate" hreflang>` (+ `x-default`) et fournit un sélecteur de langue (fonctions Twig `sptg_traductions(page)` et `sptg_alternates(page)`).
+- Blocs `<multi>` : un fichier `<type>.<lang>.md` par langue, avec la config `languages` de Grav (`include_default_lang: false`, `content_fallback` vers la langue par défaut, comme le repli de `<multi>`). Limite : Grav préfixe toujours les routes des langues non par défaut.
+- Les titres et textes sont rendus avec `extraire_multi` dans la langue de la page.
 
 ## Contenu des pages
 
@@ -54,7 +74,8 @@ Chaque page est `<type>.md` (`article.md`, `breve.md`…). Entête : `title`, `d
 
 ## Limites connues
 
-- pas de multilinguisme (`lang` conservé sous `spip:`) ;
+- liens internes en routes absolues (l'option de liens stables `spip:` n'est pas implémentée) ;
+- non testé contre une vraie installation de Grav ni de SPIP : seules des doublures (`tests/stubs.php`) ont servi ;
 - forums, pétitions, sites syndiqués non exportés ; pas de page par mot-clé ;
 - notes de bas de page : seules celles du corps sont reprises (en HTML) ;
 - la conformité réelle à Parsedown n'a pas pu être testée sans Grav : le rapport est fait pour faire remonter les écarts.

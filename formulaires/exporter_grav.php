@@ -30,11 +30,22 @@ function formulaires_exporter_grav_charger_dist() {
 	$export_name = _request('export_name') ?: (sptg_slug($nom_site) ?: 'spip2grav');
 	$dest = _request('dossier_destination') ?: '/tmp/grav';
 
+	// schémas d'URL : « identique à SPIP » n'a de sens que pour des URL de type chemin
+	$schemas = array();
+	foreach (sptg_schemas_urls() as $code => $d) {
+		$schemas[$code] = $d[0] . ($d[1] ? ' (recommandé)' : ($code == 'spip' ? '' : ' (déconseillé)'));
+	}
+	$urls_params = sptg_urls_a_parametres();
+	$cfg = sptg_config_langues();
+
 	return array(
+		'_schemas' => $schemas,
+		'_langues_site' => implode(', ', $cfg['langues']),
+		'_multilingue' => count($cfg['langues']) > 1,
 		'_objets' => $objets,
 		'_secteurs' => $secteurs,
 		'_statuts' => $statuts,
-		'_urls_params' => sptg_urls_a_parametres(),
+		'_urls_params' => $urls_params,
 		'_detection' => sptg_chemin_valide($dest) ? sptg_detecter_grav($dest) : false,
 		'objets' => array_keys($objets),
 		'secteurs' => array_keys($secteurs),
@@ -47,6 +58,10 @@ function formulaires_exporter_grav_charger_dist() {
 		'markdown' => 'oui',
 		'verifier' => 'oui',
 		'urls_spip' => 'oui',
+		'schema_urls' => $urls_params ? 'hierarchique' : 'spip',
+		'redirections' => 'auto',
+		'langues' => 'auto',
+		'installer_grav' => '',
 		'mode_images' => 'partage',
 		'conserver_source' => '',
 		'inclure_emails' => '',
@@ -69,8 +84,8 @@ function formulaires_exporter_grav_verifier_dist() {
 		$erreurs['statuts'] = _T('sptg:erreur_aucun_statut');
 	}
 
-	if (_request('urls_spip') == 'oui' and sptg_urls_a_parametres()) {
-		$erreurs['urls_spip'] = _T('sptg:erreur_urls_params');
+	if (!isset(sptg_schemas_urls()[_request('schema_urls')])) {
+		$erreurs['schema_urls'] = _T('sptg:erreur_slug');
 	}
 	if (!in_array(_request('mode_images'), array('partage', 'img'))) {
 		$erreurs['mode_images'] = _T('sptg:erreur_slug');
@@ -130,6 +145,10 @@ function formulaires_exporter_grav_traiter_dist() {
 		'markdown' => _request('markdown') == 'oui',
 		'verifier' => _request('verifier') == 'oui',
 		'urls_spip' => _request('urls_spip') == 'oui',
+		'schema_urls' => (string) _request('schema_urls'),
+		'redirections' => _request('redirections') == 'aucune' ? 'aucune' : 'auto',
+		'langues' => _request('langues') == 'non' ? 'non' : 'auto',
+		'installer_grav' => _request('installer_grav') == 'oui',
 		'mode_images' => _request('mode_images') == 'img' ? 'img' : 'partage',
 		'conserver_source' => _request('conserver_source') == 'oui',
 		'inclure_emails' => _request('inclure_emails') == 'oui',
@@ -151,6 +170,15 @@ function formulaires_exporter_grav_traiter_dist() {
 		'ecarts' => count($r['ecarts']), 'html' => $r['fmt_html'], 'liens' => count($r['liens_bruts']),
 	));
 	$msg .= '<br />' . _T('sptg:resultat_urls', array('redir' => $r['redirections'], 'non' => $r['non_redirigeables']));
+	if ($r['grav']) {
+		$msg .= '<br />' . entites_html($r['grav']);
+	}
+	if ($r['doublons']) {
+		$msg .= '<br />' . count($r['doublons']) . ' route(s) en double suffixée(s) (voir le rapport).';
+	}
+	if ($r['langues']) {
+		$msg .= '<br />Langues (i18n Grav) : ' . entites_html(implode(', ', $r['langues']));
+	}
 
 	if ($r['ecarts']) {
 		$msg .= '<details><summary>' . _T('sptg:resultat_echantillons') . '</summary>';

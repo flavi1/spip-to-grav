@@ -8,6 +8,7 @@
  * Chaque fichier tests/fixtures/*.html est un cas : un fragment HTML tel que le produit propre().
  * Pour ajouter un défaut remonté par l'export : coller l'échantillon dans un nouveau fichier.
  * Les attentes précises (Markdown exact) sont dans tests/expected.php.
+ * Lance aussi tests/unit.php et tests/integration.php (processus séparés : doublures SPIP).
  */
 define('SPTG_TESTS', 1);
 require __DIR__ . '/../inc/sptg_markdown.php';
@@ -41,5 +42,12 @@ foreach ($attendus as $nom => $paire) {
 	}
 }
 
-echo "\n" . ($total - $echecs) . "/$total OK\n";
+echo "\nmarkdown : " . ($total - $echecs) . "/$total OK\n";
+
+foreach (array('unit', 'integration') as $suite) {
+	passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__DIR__ . "/$suite.php"), $code);
+	if ($code) {
+		$echecs++;
+	}
+}
 exit($echecs ? 1 : 0);
