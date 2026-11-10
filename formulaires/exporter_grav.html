@@ -59,6 +59,11 @@
 						<label for="redir_aucune"><:sptg:redirections_aucune:></label>
 					</div>
 				</li>
+				<li class="editer editer_creer_comptes">
+					<input type="checkbox" name="creer_comptes" id="opt_creer_comptes" value="oui"[(#ENV{creer_comptes}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_creer_comptes"><:sptg:option_creer_comptes:></label>
+					<p class="explication"><:sptg:aide_creer_comptes:></p>
+				</li>
 				<li class="editer editer_liens_stables">
 					<input type="checkbox" name="liens_stables" id="opt_liens_stables" value="oui"[(#ENV{liens_stables}|=={oui}|?{' checked="checked"'})] />
 					<label for="opt_liens_stables"><:sptg:option_liens_stables:></label>

@@ -91,6 +91,16 @@ Vérifié dans le code de Grav : le traitement des liens de Markdown laisse inta
 
 **Thème réutilisé.** Le thème est toujours généré une première fois ; ensuite on peut ne régénérer que le contenu. Le plugin ne modifie alors jamais le thème existant, mais le contrôle : il lit `const API` dans son `sptg_runtime.php` et cherche `sptgRuntime` dans son PHP principal. Helpers compatibles : liens stables et résolveur d'anciennes URL actifs. Absents, anciens (thème issu d'une vieille version du plugin) ou retirés : routes absolues à la place, redirections par `site.yaml`, et un avertissement dans le rapport qui dit quoi faire (régénérer le thème).
 
+## Auteurs : comptes de rédacteurs dans admin2
+
+Option « Créer un compte de rédacteur Grav (admin2) pour chaque auteur » (cochée par défaut). Pour chaque administrateur ou rédacteur SPIP ayant une adresse email valide et unique, l'export écrit `user/accounts/<identifiant>.yaml` : nom, intitulé, email, `state: enabled`, et les droits `site.login`, `api.access`, `api.pages` (lecture/écriture), `api.media` (lecture/écriture). Aucun droit de configuration, de plugins, d'utilisateurs ni de super-administration.
+
+Les comptes n'ont **pas de mot de passe**. À la première connexion, l'auteur clique sur « Mot de passe oublié » (admin2 ou page de connexion du site) et saisit l'adresse enregistrée dans SPIP : le plugin `login` retrouve le compte par cette adresse, pose un jeton valable 24 h et envoie le lien de création du mot de passe (vérifié dans le code de `login` : `Controller::taskForgot` / `taskReset`, et dans celui de `api` : `POST /auth/forgot-password`, `/auth/reset-password`). La réponse est toujours neutre : personne ne peut découvrir quelles adresses ont un compte. L'email n'est écrit que dans le compte (`user/accounts/` n'est pas servi), jamais dans les pages, même avec « inclure les emails ».
+
+Règles : les comptes existants ne sont jamais modifiés (ni l'administrateur créé à l'installation de Grav) ; l'archive zip ne contient que les comptes créés par l'export ; un auteur sans email valide, ou dont l'email est déjà pris, est listé dans le rapport (la réinitialisation retrouve le compte par l'email, deux comptes ne peuvent donc pas le partager) ; identifiants dérivés du login SPIP (`[a-z0-9_-]{3,16}`, suffixés si doublon). Visiteurs, « nouveaux » et auteurs à la poubelle n'ont pas de compte.
+
+Prérequis côté Grav (rappelés dans le rapport) : plugins `login`, `email`, `api`, `admin2`, un expéditeur configuré (`plugins.email.from` et moteur d'envoi), idéalement `plugins.login.site_host`. Sans envoi d'email, le lien ne part pas : l'administrateur peut alors définir le mot de passe lui-même.
+
 ## Contenu des pages
 
 Chaque page est `<type>.md` (`article.md`, `breve.md`…). Entête : `title`, `date`, `published`, `taxonomy`, puis tous les champs de la table sous `spip:`. Les blueprints et templates du thème sont générés d'après la structure SQL de chaque type.

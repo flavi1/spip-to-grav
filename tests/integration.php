@@ -237,4 +237,50 @@ t_ok(!empty($r['rapport']['doublons']) or !empty($r['doublons']), 'doublons : si
 $all = shell_exec('grep -rh "default:" ' . escapeshellarg("$dest/user/pages") . ' 2>/dev/null');
 t_ok(strpos((string) $all, '/meme-url-2') !== false, 'doublons : suffixe -2', (string) $all);
 
+// ------------------------------------------------ 12. comptes des auteurs
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'Actu')),
+		'spip_articles' => array(art(10, 1, 'Un article')),
+		'spip_auteurs' => array(
+			array('id_auteur' => 1, 'nom' => 'Marie Curie', 'login' => 'marie', 'email' => 'marie@exemple.org', 'statut' => '1comite'),
+			array('id_auteur' => 2, 'nom' => 'Sans Mail', 'login' => 'sm', 'email' => '', 'statut' => '1comite'),
+		),
+	),
+));
+$dest_c = t_tmp('comptes');
+mkdir("$dest_c/user/accounts", 0775, true);
+mkdir("$dest_c/system");
+file_put_contents("$dest_c/system/defines.php", "<?php define('GRAV_VERSION', '2.0.0');");
+file_put_contents("$dest_c/index.php", '<?php');
+file_put_contents("$dest_c/user/accounts/admin.yaml", "email: admin@site.org\nhashed_password: SECRET\n");
+$r12 = sptg_exporter(array(
+	'export_name' => 'demo', 'dossier_destination' => $dest_c, 'objets' => array('article', 'rubrique'),
+	'secteurs' => array(1), 'statuts' => array('publie'), 'mode_images' => 'partage', 'creer_comptes' => true, 'creer_zip' => true,
+));
+$cm = @file_get_contents("$dest_c/user/accounts/marie.yaml");
+t_ok($cm !== false and strpos($cm, 'marie@exemple.org') !== false, 'comptes export : fichier écrit avec l\'email', (string) $cm);
+t_ok(strpos((string) $cm, 'password') === false, 'comptes export : pas de mot de passe');
+t_ok(strpos((string) $cm, 'state: "enabled"') !== false or strpos((string) $cm, 'state: enabled') !== false, 'comptes export : compte activé', (string) $cm);
+t_ok(!is_file("$dest_c/user/accounts/sm.yaml"), 'comptes export : auteur sans email ignoré');
+t_eq(file_get_contents("$dest_c/user/accounts/admin.yaml"), "email: admin@site.org\nhashed_password: SECRET\n", 'comptes export : compte existant intact');
+t_eq($r12['comptes']['crees'], 1, 'comptes export : 1 compte créé');
+$rap = file_get_contents(_DIR_TMP . 'sptg/' . $r12['rapport']);
+t_ok(strpos($rap, 'Sans Mail') !== false and strpos($rap, 'Mot de passe oublié') !== false, 'comptes export : rapport (ignorés + prérequis)', $rap);
+$page_c = glob("$dest_c/user/pages/*/*.md");
+$tout_pages = '';
+foreach (glob("$dest_c/user/pages/*/*.md") as $f) { $tout_pages .= file_get_contents($f); }
+t_ok(strpos($tout_pages, 'marie@exemple.org') === false, 'comptes export : email absent des pages');
+if (!empty($r12['zip']) and class_exists('ZipArchive')) {
+	$z = new ZipArchive();
+	$z->open(_DIR_TMP . 'sptg/' . $r12['zip']);
+	t_ok($z->locateName('user/accounts/marie.yaml') !== false and $z->locateName('user/accounts/admin.yaml') === false, 'comptes export : zip avec les comptes créés, sans l\'admin existant');
+}
+$r12b = sptg_exporter(array(
+	'export_name' => 'demo', 'dossier_destination' => $dest_c, 'objets' => array('article', 'rubrique'),
+	'secteurs' => array(1), 'statuts' => array('publie'), 'mode_images' => 'partage', 'creer_comptes' => false,
+));
+t_ok(empty($r12b['comptes']), 'comptes export : option décochée → rien');
+
 t_fin('integration');

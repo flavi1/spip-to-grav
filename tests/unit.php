@@ -436,4 +436,34 @@ file_put_contents("$dd/grav/index.php", '<?php');
 t_eq(sptg_cible("$dd/grav"), array("$dd/grav/", true), 'cible : installation Grav détectée');
 t_ok(sptg_destination_acceptable("$dd/grav"), 'destination : installation Grav acceptée');
 
+// ------------------------------------------------ comptes des auteurs (rédacteurs admin2)
+include_spip('inc/sptg_comptes');
+t_eq(sptg_compte_identifiant('Éloïse Müller', 5), 'eloise-muller', 'compte : identifiant sans accents');
+t_eq(sptg_compte_identifiant('', 7), 'auteur7', 'compte : identifiant de repli');
+t_eq(sptg_compte_identifiant('ab', 7), 'ab7', 'compte : identifiant complété à 3 caractères');
+t_eq(strlen(sptg_compte_identifiant('un-login-vraiment-beaucoup-trop-long', 1)), 16, 'compte : identifiant tronqué à 16');
+t_eq(sptg_compte_identifiant_libre('jean', array('jean' => true, 'jean-2' => true)), 'jean-3', 'compte : suffixe numérique');
+t_ok(strlen(sptg_compte_identifiant_libre('abcdefghijklmnop', array('abcdefghijklmnop' => true))) <= 16, 'compte : suffixe sous 16 caractères');
+$aut = array(
+	array('id_auteur' => 1, 'nom' => 'Jean Dupont', 'login' => 'jean', 'email' => 'Jean@Exemple.org', 'statut' => '0minirezo'),
+	array('id_auteur' => 2, 'nom' => 'Autre Jean', 'login' => 'jean', 'email' => 'autre@exemple.org', 'statut' => '1comite'),
+	array('id_auteur' => 3, 'nom' => 'Doublon', 'login' => 'doublon', 'email' => 'jean@exemple.org', 'statut' => '1comite'),
+	array('id_auteur' => 4, 'nom' => 'Sans mail', 'login' => 'sm', 'email' => '', 'statut' => '1comite'),
+	array('id_auteur' => 5, 'nom' => 'Visiteur', 'login' => 'vis', 'email' => 'v@exemple.org', 'statut' => '6forum'),
+	array('id_auteur' => 6, 'nom' => 'Poubelle', 'login' => 'pb', 'email' => 'p@exemple.org', 'statut' => '5poubelle'),
+	array('id_auteur' => 7, 'nom' => 'Admin Grav', 'login' => 'admin', 'email' => 'admin@exemple.org', 'statut' => '1comite'),
+	array('id_auteur' => 8, 'nom' => 'Mail cassé', 'login' => 'mc', 'email' => 'pas-un-mail', 'statut' => '1comite'),
+);
+$c = sptg_comptes_construire($aut, array('admin' => true), array('admin@exemple.org' => true));
+t_eq(array_keys($c['comptes']), array('jean', 'jean-2'), 'comptes : seuls admins/rédacteurs avec email valide et unique');
+t_eq($c['comptes']['jean']['title'], 'Administrateur', 'comptes : intitulé administrateur');
+t_eq($c['comptes']['jean-2']['title'], 'Rédacteur', 'comptes : intitulé rédacteur ; identifiant en double suffixé');
+t_eq($c['comptes']['jean']['email'], 'Jean@Exemple.org', 'comptes : email conservé tel quel');
+t_eq($c['comptes']['jean']['state'], 'enabled', 'comptes : activé');
+t_ok(!isset($c['comptes']['jean']['password']) and !isset($c['comptes']['jean']['hashed_password']), 'comptes : aucun mot de passe');
+$acc = $c['comptes']['jean']['access'];
+t_ok($acc['api']['access'] === true and $acc['api']['pages']['write'] === true and $acc['api']['media']['write'] === true and $acc['site']['login'] === true, 'comptes : droits de rédacteur admin2');
+t_ok(!isset($acc['api']['super']) and !isset($acc['admin']) and !isset($acc['api']['config']) and !isset($acc['api']['users']) and !isset($acc['api']['system']), 'comptes : aucun droit d\'administration');
+t_eq(array_column($c['ignores'], 'id_auteur'), array(3, 4, 7, 8), 'comptes : ignorés = doublon, sans email, email déjà pris, email invalide');
+
 t_fin('unit');

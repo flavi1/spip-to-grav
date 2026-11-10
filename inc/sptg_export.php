@@ -21,6 +21,7 @@ include_spip('inc/sptg_urls');
 include_spip('inc/sptg_index');
 include_spip('inc/sptg_langues');
 include_spip('inc/sptg_grav_install');
+include_spip('inc/sptg_comptes');
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -524,7 +525,7 @@ function sptg_exporter(array $o) {
 		'creer_zip' => false, 'mode_images' => 'partage',
 		'conserver_source' => false, 'inclure_emails' => false, 'urls_spip' => true,
 		'installer_grav' => false, 'schema_urls' => 'spip', 'redirections' => 'auto', 'langues' => 'auto',
-		'liens_stables' => false,
+		'liens_stables' => false, 'creer_comptes' => false,
 	);
 	if (!isset(sptg_schemas_urls()[$o['schema_urls']])) {
 		$o['schema_urls'] = 'spip';
@@ -542,7 +543,7 @@ function sptg_exporter(array $o) {
 		'redirections' => 0, 'non_redirigeables' => 0, 'approx' => 0, 'fmt_html' => 0,
 		'doublons' => array(), 'trad_conflits' => array(), 'langues' => array(), 'index' => 0,
 		'grav' => '', 'moteur_redirections' => '', 'schema_urls' => $o['schema_urls'],
-		'liens_stables' => '', 'theme_helpers' => '', 'media_types' => array(),
+		'liens_stables' => '', 'theme_helpers' => '', 'media_types' => array(), 'comptes' => array(),
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
@@ -1174,8 +1175,20 @@ function sptg_exporter(array $o) {
 		sptg_generer_theme($themes . $slug_theme . '/', $slug_theme, $types_utilises, (bool) $o['inclure_emails']);
 	}
 
+	// ---- comptes des auteurs (rédacteurs admin2, sans mot de passe)
+	if ($o['creer_comptes']) {
+		$c = sptg_comptes_exporter($racine);
+		$c['resume'] = 'Comptes Grav : ' . $c['crees'] . ' créé(s)'
+			. ($c['ignores'] ? ', ' . count($c['ignores']) . ' auteur(s) ignoré(s) (voir le rapport)' : '') . '.';
+		$rapport['comptes'] = $c;
+	}
+
 	// ---- IMG conservé tel quel
 	$sous_dossiers = array('user/pages', 'user/data/spip-id');
+	if (!empty($rapport['comptes']['fichiers'])) {
+		// uniquement les comptes écrits ici : jamais ceux déjà présents (mots de passe hachés de l'administrateur)
+		$sous_dossiers = array_merge($sous_dossiers, $rapport['comptes']['fichiers']);
+	}
 	if ($o['generer_theme']) {
 		$sous_dossiers[] = 'user/themes/' . $slug_theme;
 	}
@@ -1239,6 +1252,9 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	if ($r['media_types']) {
 		$t .= "- Types de média ajoutés à Grav (user/config/media.yaml) : " . implode(', ', $r['media_types']) . "\n";
 	}
+	if (!empty($r['comptes'])) {
+		$t .= "- " . $r['comptes']['resume'] . "\n";
+	}
 	if ($r['liens_stables']) {
 		$t .= "- Liens internes stables (idx:type/id) : " . $r['liens_stables'] . "\n";
 	}
@@ -1253,6 +1269,12 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "- $d\n";
 	}
 
+	if (!empty($r['comptes'])) {
+		$t .= "\n## Comptes des auteurs\n\n- Prérequis : " . $r['comptes']['prerequis'] . "\n";
+		foreach ($r['comptes']['ignores'] as $i) {
+			$t .= "- Ignoré : auteur " . $i['id_auteur'] . " (" . $i['nom'] . ") — " . $i['raison'] . "\n";
+		}
+	}
 	if ($r['doublons']) {
 		$t .= "\n## Routes en double, suffixées (" . count($r['doublons']) . ")\n\n";
 		foreach ($r['doublons'] as $d) {
