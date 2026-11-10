@@ -2,11 +2,13 @@
 /**
  * Moteur d'export SPIP -> Grav.
  *
- * Arborescence produite (dans l'archive ZIP) :
- *   user/pages/...            pages (rubriques = dossiers, objets = sous-dossiers)
- *   user/themes/<slug>/...    thème généré (templates Twig + blueprints)
- *   user/config/*.yaml        configuration minimale
- *   IMG/ ...                  dossier IMG (optionnel)
+ * Ordre des opérations :
+ *   1. cible (dossier, détection d'une installation Grav, vidage éventuel)
+ *   2. CHEMINS : arborescence des rubriques, route Grav de chaque objet (avant tout rendu)
+ *   3. relations (mots, auteurs, documents)
+ *   4. rendu : propre() -> (HTML) -> Markdown, avec vérification de l'aller-retour
+ *   5. écriture des pages, de la configuration, du thème
+ *   6. rapport, et zip optionnel si tout s'est bien passé
  */
 if (!defined('_ECRIRE_INC_VERSION')) {
 	return;
@@ -14,6 +16,7 @@ if (!defined('_ECRIRE_INC_VERSION')) {
 
 include_spip('inc/sptg_introspection');
 include_spip('inc/sptg_yaml');
+include_spip('inc/sptg_markdown');
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -47,9 +50,27 @@ function sptg_copier_arbre($src, $dst) {
 	return $n;
 }
 
+function sptg_rm_contenu($dir) {
+	if (!is_dir($dir)) {
+		return;
+	}
+	foreach (scandir($dir) as $f) {
+		if ($f === '.' or $f === '..') {
+			continue;
+		}
+		$p = "$dir/$f";
+		if (is_dir($p) and !is_link($p)) {
+			sptg_rm_contenu($p);
+			@rmdir($p);
+		} else {
+			@unlink($p);
+		}
+	}
+}
+
 function sptg_slug($txt, $max = 60) {
 	include_spip('inc/charsets');
-	$txt = textebrut($txt);
+	$txt = supprimer_numero(textebrut($txt));
 	$txt = strtolower(translitteration($txt));
 	$txt = trim(preg_replace('/[^a-z0-9]+/', '-', $txt), '-');
 	return substr($txt, 0, $max);
@@ -81,19 +102,74 @@ function sptg_date($d) {
 	return substr($d, 0, 16);
 }
 
-/** Lit les lignes d'un type d'objet en appliquant le filtre de statuts */
-function sptg_lire_objets(array $info, array $statuts) {
-	$where = array();
-	if ($info['type'] == 'auteur') {
-		$where[] = sql_in('statut', array('0minirezo', '1comite'));
-	} elseif ($info['statut']) {
-		$where[] = sql_in($info['statut'], $statuts);
-	}
-	$sel = '*' . ($info['titre_sql'] ? ', ' . $info['titre_sql'] : '');
-	return sql_allfetsel($sel, $info['table'], $where) ?: array();
+// ------------------------------------------------------------------- cible
+
+/** Une installation Grav : user/, system/ et index.php */
+function sptg_detecter_grav($dir) {
+	$dir = rtrim($dir, '/\\');
+	return is_dir("$dir/user") and is_dir("$dir/system") and is_file("$dir/index.php");
 }
 
-// ------------------------------------------------------------- contenu HTML
+/**
+ * Résout la racine de l'export (qui contient user/).
+ *
+ * @return array [racine, est_installation]
+ */
+function sptg_cible($dest, $export_name) {
+	$dest = rtrim($dest, '/\\');
+	if (sptg_detecter_grav($dest)) {
+		return array($dest . '/', true);
+	}
+	return array($dest . '/' . $export_name . '/', false);
+}
+
+/** Contrôle de sécurité sur un chemin de destination saisi */
+function sptg_chemin_valide($dest) {
+	$dest = trim($dest);
+	if ($dest === '' or !preg_match('~^(/|[A-Za-z]:[\\\\/])~', $dest)) {
+		return false;
+	}
+	if (preg_match('~(^|[\\\\/])\.\.([\\\\/]|$)~', $dest)) {
+		return false;
+	}
+	return strlen(trim($dest, '/\\')) > 1 and trim($dest, '/\\') !== '';
+}
+
+function sptg_dossier_non_vide($dir) {
+	if (!is_dir($dir)) {
+		return false;
+	}
+	return count(array_diff(scandir($dir), array('.', '..'))) > 0;
+}
+
+// ------------------------------------------------------ URLs et liens SPIP
+
+/**
+ * URL actuelle d'un objet selon la configuration du site.
+ *
+ * @return array|null ['path' => ...] si l'URL est un chemin ; ['query' => ...] si elle contient un « ? »
+ */
+function sptg_url_spip($type, $id) {
+	include_spip('inc/urls');
+	if (!function_exists('generer_objet_url')) {
+		return null;
+	}
+	try {
+		$u = generer_objet_url($id, $type, '', '', true);
+	} catch (\Throwable $e) {
+		return null;
+	}
+	if (!is_string($u) or $u === '') {
+		return null;
+	}
+	$u = preg_replace('~#.*$~', '', $u);
+	$u = preg_replace('~^https?://[^/]+/?~i', '', $u);
+	$u = ltrim(preg_replace('~^(\./)+~', '', $u), '/');
+	if ($u === '') {
+		return null;
+	}
+	return strpos($u, '?') !== false ? array('query' => $u) : array('path' => $u);
+}
 
 /** Remplace les liens internes SPIP ([->art12]) par la route Grav correspondante */
 function sptg_liens_internes($texte, array $routes) {
@@ -116,21 +192,40 @@ function sptg_liens_internes($texte, array $routes) {
 	);
 }
 
-function sptg_html($texte, array $routes, array $remplacements = array()) {
-	if (trim((string) $texte) === '') {
-		return '';
+// ----------------------------------------------------- documents et fichiers
+
+function sptg_doc_info($id) {
+	static $cache = array();
+	$id = (int) $id;
+	if (!isset($cache[$id])) {
+		$cache[$id] = sql_fetsel('*', 'spip_documents', 'id_document=' . $id) ?: null;
 	}
-	$texte = sptg_liens_internes($texte, $routes);
-	try {
-		$html = propre($texte);
-	} catch (\Throwable $e) {
-		$html = nl2br(entites_html($texte));
+	return $cache[$id];
+}
+
+function sptg_est_image($ext) {
+	return in_array(strtolower($ext), array('jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif'));
+}
+
+/**
+ * Référence utilisable dans le contenu pour un fichier : nom local (copié dans le dossier de la page)
+ * ou chemin absolu public.
+ */
+function sptg_fichier_ref(array &$ctx, $abs, $public) {
+	if (empty($ctx['copier']) or !is_file($abs)) {
+		return $public;
 	}
-	foreach ($remplacements as $de => $vers) {
-		$html = str_replace($de, $vers, $html);
+	$nom = basename($abs);
+	if (isset($ctx['noms'][$nom]) and $ctx['noms'][$nom] !== $abs) {
+		$nom = substr(md5($abs), 0, 6) . '-' . $nom;
 	}
-	// IMG/ et vignettes : liens absolus depuis la racine du site Grav
-	return preg_replace('~(\b(?:src|href)=["\'])(?:\./)?((?:IMG|local/cache-vignettes)/)~i', '$1/$2', $html);
+	if (!isset($ctx['noms'][$nom])) {
+		sptg_mkdir($ctx['dirabs']);
+		copy($abs, $ctx['dirabs'] . $nom);
+		$ctx['noms'][$nom] = $abs;
+		$ctx['stats']['fichiers']++;
+	}
+	return $nom;
 }
 
 function sptg_prefixe_logo($type) {
@@ -139,6 +234,126 @@ function sptg_prefixe_logo($type) {
 	}
 	$m = array('article' => 'arton', 'rubrique' => 'rubon', 'auteur' => 'auton', 'mot' => 'moton', 'breve' => 'breveon');
 	return isset($m[$type]) ? $m[$type] : $type . 'on';
+}
+
+/** Lit les lignes d'un type d'objet en appliquant le filtre de statuts */
+function sptg_lire_objets(array $info, array $statuts) {
+	$where = array();
+	if ($info['type'] == 'auteur') {
+		$where[] = sql_in('statut', array('0minirezo', '1comite'));
+	} elseif ($info['statut']) {
+		$where[] = sql_in($info['statut'], $statuts);
+	}
+	$sel = '*' . ($info['titre_sql'] ? ', ' . $info['titre_sql'] : '');
+	return sql_allfetsel($sel, $info['table'], $where) ?: array();
+}
+
+// ------------------------------------------------------------ rendu du texte
+
+/**
+ * SPIP -> HTML (propre) -> Markdown, avec vérification de l'aller-retour.
+ *
+ * @return array ['val' => texte, 'fmt' => 'md'|'html']
+ */
+function sptg_rendre_texte($raw, array &$ctx, $champ) {
+	if (trim((string) $raw) === '') {
+		return array('val' => '', 'fmt' => 'md');
+	}
+	include_spip('inc/texte');
+	include_spip('inc/notes');
+
+	// 1. pré-traitement du source SPIP, hors <code>/<cadre>/<html>/<text>
+	$segments = preg_split('#(<(?:code|cadre|html|text)\b.*?</(?:code|cadre|html|text)>)#is', $raw, -1, PREG_SPLIT_DELIM_CAPTURE);
+	foreach ($segments as $k => &$seg) {
+		if ($k % 2 == 0) {
+			$seg = sptg_liens_internes($seg, $ctx['routes']);
+			$seg = preg_replace_callback(
+				'/<(img|image|doc|document|emb|embed)\s*(\d+)\s*((?:\|[^>]*)?)\s*\/?>/i',
+				function ($m) {
+					return '<span class="sptg-modele" data-modele="' . strtolower($m[1]) . '" data-id="' . (int) $m[2] . '"></span>';
+				},
+				$seg
+			);
+		}
+	}
+	unset($seg);
+	$pre = implode('', $segments);
+
+	// 2. rendu SPIP
+	try {
+		$html = propre($pre);
+		$notes = function_exists('calculer_notes') ? calculer_notes() : '';
+	} catch (\Throwable $e) {
+		$ctx['ecarts'][] = array(
+			'page' => $ctx['route'], 'champ' => $champ, 'attendu' => 'exception propre() : ' . $e->getMessage(),
+			'obtenu' => '', 'source' => mb_substr($raw, 0, 300), 'markdown' => '',
+		);
+		return array('val' => $raw, 'fmt' => 'html');
+	}
+	if ($champ == 'texte' and trim((string) $notes) !== '') {
+		$html .= "\n" . $notes;
+	}
+
+	// 3. modèles d'images / documents -> HTML simple
+	$html = preg_replace_callback(
+		'/<span class="sptg-modele" data-modele="(\w+)" data-id="(\d+)"><\/span>/',
+		function ($m) use (&$ctx) {
+			$d = sptg_doc_info($m[2]);
+			if (!$d) {
+				$ctx['stats']['modeles_orphelins']++;
+				return '';
+			}
+			$titre = sptg_titre_propre($d['titre']);
+			if ($d['distant'] == 'oui') {
+				$ref = $d['fichier'];
+			} else {
+				$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], '/IMG/' . $d['fichier']);
+			}
+			$image = sptg_est_image($d['extension']);
+			if ($image) {
+				return '<img src="' . htmlspecialchars($ref, ENT_QUOTES) . '" alt="' . htmlspecialchars($titre, ENT_QUOTES) . '" />';
+			}
+			return '<a href="' . htmlspecialchars($ref, ENT_QUOTES) . '">'
+				. htmlspecialchars($titre !== '' ? $titre : basename($d['fichier'])) . '</a>';
+		},
+		$html
+	);
+
+	// 4. autres fichiers du site (IMG/, local/) -> copie locale ou chemin absolu
+	$html = preg_replace_callback(
+		'~\b(src|href)=(["\'])(?:\./)?((?:IMG|local)/[^"\']+)\2~i',
+		function ($m) use (&$ctx) {
+			$rel = html_entity_decode($m[3]);
+			$ref = sptg_fichier_ref($ctx, _DIR_RACINE . $rel, '/' . $rel);
+			return $m[1] . '=' . $m[2] . htmlspecialchars($ref, ENT_QUOTES) . $m[2];
+		},
+		$html
+	);
+
+	// liens internes non résolus (URL SPIP « à paramètres »)
+	if (preg_match_all('~href=["\']([^"\']*(?:spip\.php\?|[?&]id_(?:article|rubrique|breve|mot|auteur)=)[^"\']*)["\']~i', $html, $mm)) {
+		foreach ($mm[1] as $u) {
+			$ctx['liens_bruts'][] = array('page' => $ctx['route'], 'champ' => $champ, 'url' => html_entity_decode($u));
+		}
+	}
+
+	if (empty($ctx['markdown'])) {
+		return array('val' => $html, 'fmt' => 'html');
+	}
+
+	// 5. Markdown + vérification
+	$md = sptg_html2md($html);
+	if (!empty($ctx['verifier'])) {
+		$diff = sptg_comparer_html($html, sptg_md2html($md));
+		if ($diff) {
+			$ctx['ecarts'][] = array(
+				'page' => $ctx['route'], 'champ' => $champ, 'attendu' => $diff['attendu'], 'obtenu' => $diff['obtenu'],
+				'source' => mb_substr($raw, max(0, 0), 400), 'markdown' => mb_substr($md, 0, 600),
+			);
+			return array('val' => $html, 'fmt' => 'html');
+		}
+	}
+	return array('val' => rtrim($md), 'fmt' => 'md');
 }
 
 // ------------------------------------------------------------------ export
@@ -153,10 +368,31 @@ function sptg_exporter(array $o) {
 	@set_time_limit(0);
 
 	$o += array(
+		'export_name' => 'spip2grav', 'dossier_destination' => '/tmp/grav', 'vider' => false,
 		'objets' => array(), 'secteurs' => array(), 'statuts' => array('publie'),
-		'generer_theme' => true, 'nom_theme' => 'spip2grav', 'conserver_img' => true,
-		'copier_documents' => false, 'conserver_source' => false, 'inclure_emails' => false,
+		'generer_theme' => true, 'nom_theme' => '', 'markdown' => true, 'verifier' => true,
+		'creer_zip' => false, 'copier_documents' => true, 'conserver_img' => false,
+		'conserver_source' => false, 'inclure_emails' => false, 'urls_spip' => true,
 	);
+	$export_name = $o['export_name'];
+	$slug_theme = $o['nom_theme'] !== '' ? $o['nom_theme'] : $export_name . '-theme';
+
+	// ---- 1. Cible
+	list($racine, $est_install) = sptg_cible($o['dossier_destination'], $export_name);
+	$pages = $racine . 'user/pages/';
+	$themes = $racine . 'user/themes/';
+	sptg_mkdir($pages);
+	if (!is_dir($pages) or !is_writable($pages)) {
+		throw new \RuntimeException('Dossier de destination non accessible en écriture : ' . $pages);
+	}
+	if ($o['vider']) {
+		sptg_rm_contenu(rtrim($pages, '/'));
+		if ($o['generer_theme'] and is_dir($themes . $slug_theme)) {
+			sptg_rm_contenu($themes . $slug_theme);
+			@rmdir($themes . $slug_theme);
+		}
+	}
+
 	$intro = sptg_introspecter(false);
 	$demandes = (array) $o['objets'];
 	$types = array_values(array_intersect(array_keys($intro), $demandes));
@@ -164,20 +400,34 @@ function sptg_exporter(array $o) {
 	$avec_docs = in_array('document', $demandes);
 	$utilise_rub = in_array('rubrique', $types);
 
-	$tmp = sous_repertoire(_DIR_TMP, 'sptg');
-	$stamp = date('Ymd_His');
-	$base = $tmp . 'export_' . $stamp . '/';
-	$pages = $base . 'user/pages/';
-	sptg_mkdir($pages);
-
-	$rapport = array('pages' => 0, 'ignores' => 0, 'details' => array());
-	$items = array();    // pages à écrire
-	$routes = array();   // routes[type][id] = '/chemin'
-	$noms = array();     // slugs utilisés par dossier parent
+	$rapport = array(
+		'pages' => 0, 'ignores' => 0, 'details' => array(), 'ecarts' => array(), 'liens_bruts' => array(),
+		'racine' => $racine, 'est_install' => $est_install, 'theme' => $o['generer_theme'] ? $slug_theme : '',
+		'stats' => array('fichiers' => 0, 'modeles_orphelins' => 0),
+		'redirections' => 0, 'non_redirigeables' => 0, 'fmt_html' => 0,
+	);
+	$items = array();
+	$routes = array();
+	$noms = array();
 	$collections = array();
 	$rub_chemin = array();
+	$redirects = array();
 
-	// ---- 1. Rubriques (arborescence)
+	$slug_de = function ($type, $id, $titre) use ($o, &$redirects, &$rapport) {
+		$u = $o['urls_spip'] ? sptg_url_spip($type, $id) : null;
+		$slug = '';
+		if ($u and isset($u['path'])) {
+			$seg = preg_replace('/\.[a-z0-9]{2,5}$/i', '', basename($u['path']));
+			// « article12 », « 12 » : URL non descriptive, on préfère le titre
+			$slug = preg_match('/^[a-z_-]*\d+$/i', $seg) ? '' : sptg_slug($seg);
+		}
+		if (!$slug) {
+			$slug = sptg_slug($titre) ?: $type . '-' . $id;
+		}
+		return array($slug, $u);
+	};
+
+	// ---- 2. CHEMINS : rubriques puis autres objets (tout est décidé avant le rendu)
 	$nb_racine = 0;
 	if ($utilise_rub) {
 		$info = $intro['rubrique'];
@@ -202,7 +452,7 @@ function sptg_exporter(array $o) {
 				$enfants[(int) $r['id_parent']][] = $r;
 			}
 		}
-		$parcourir = function ($parent_id, $dir, $route, $depart) use (&$parcourir, &$enfants, &$noms, &$rub_chemin, &$routes, &$items, $info) {
+		$parcourir = function ($parent_id, $dir, $route, $depart) use (&$parcourir, &$enfants, &$noms, &$rub_chemin, &$routes, &$items, $info, $slug_de) {
 			if (empty($enfants[$parent_id])) {
 				return 0;
 			}
@@ -213,13 +463,13 @@ function sptg_exporter(array $o) {
 			$n = $depart;
 			foreach ($fr as $r) {
 				$id = (int) $r['id_rubrique'];
-				$slug = sptg_slug($r['titre']) ?: 'rubrique-' . $id;
+				list($slug, $u) = $slug_de('rubrique', $id, $r['titre']);
 				$slug = sptg_nom_unique($noms, $dir, $slug);
 				$sdir = $dir . sprintf('%02d.', $n++) . $slug;
 				$sroute = $route . '/' . $slug;
 				$rub_chemin[$id] = array('dir' => $sdir . '/', 'route' => $sroute);
 				$routes['rubrique'][$id] = $sroute;
-				$items[] = array('info' => $info, 'row' => $r, 'dir' => $sdir . '/', 'route' => $sroute);
+				$items[] = array('info' => $info, 'row' => $r, 'dir' => $sdir . '/', 'route' => $sroute, 'old' => $u);
 				$parcourir($id, $sdir . '/', $sroute, 1);
 			}
 			return count($fr);
@@ -228,20 +478,19 @@ function sptg_exporter(array $o) {
 	}
 	$prochain_racine = 2 + $nb_racine;
 
-	// ---- 2. Autres objets
 	foreach ($types as $type) {
 		if ($type == 'rubrique') {
 			continue;
 		}
 		$info = $intro[$type];
 		$lignes = sptg_lire_objets($info, $o['statuts']);
-		usort($lignes, function ($a, $b) use ($info) {
+		usort($lignes, function ($a, $b) {
 			return sptg_cle_tri(isset($a['titre']) ? $a['titre'] : '') <=> sptg_cle_tri(isset($b['titre']) ? $b['titre'] : '');
 		});
 		foreach ($lignes as $r) {
 			$id = (int) $r[$info['id']];
 			$titre = isset($r['titre']) ? $r['titre'] : '';
-			$slug = sptg_slug($titre) ?: $type . '-' . $id;
+			list($slug, $u) = $slug_de($type, $id, $titre);
 
 			if ($info['a_rubrique'] and $utilise_rub and (int) $r['id_rubrique'] > 0) {
 				if (!isset($rub_chemin[(int) $r['id_rubrique']])) {
@@ -264,12 +513,25 @@ function sptg_exporter(array $o) {
 				$proute = $collections[$type]['route'];
 			}
 			$slug = sptg_nom_unique($noms, $pdir, $slug);
-			$dir = $pdir . $slug . '/';
 			$route = $proute . '/' . $slug;
 			$routes[$type][$id] = $route;
-			$items[] = array('info' => $info, 'row' => $r, 'dir' => $dir, 'route' => $route);
+			$items[] = array('info' => $info, 'row' => $r, 'dir' => $pdir . $slug . '/', 'route' => $route, 'old' => $u);
 		}
 	}
+
+	// redirections depuis les anciennes URL (uniquement si l'ancienne URL est un chemin)
+	foreach ($items as $it) {
+		$u = $it['old'];
+		if ($u and isset($u['path'])) {
+			$ancien = '/' . $u['path'];
+			if ($ancien !== $it['route']) {
+				$redirects[$ancien] = $it['route'];
+			}
+		} elseif ($u) {
+			$rapport['non_redirigeables']++;
+		}
+	}
+	$rapport['redirections'] = count($redirects);
 
 	// ---- 3. Relations : mots, auteurs, documents
 	$cles_types = array_values(array_unique(array_map(function ($i) {
@@ -313,7 +575,7 @@ function sptg_exporter(array $o) {
 		}
 	}
 
-	// ---- 4. Écriture des pages
+	// ---- 4/5. Rendu et écriture des pages
 	$compte = array();
 	foreach ($items as $it) {
 		$info = $it['info'];
@@ -323,17 +585,21 @@ function sptg_exporter(array $o) {
 		$cle = $type . ':' . $id;
 		$dirabs = $pages . $it['dir'];
 
-		// documents
-		$remp = array();
+		$ctx = array(
+			'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+			'copier' => (bool) $o['copier_documents'],
+			'dirabs' => $dirabs, 'route' => $it['route'], 'noms' => array(),
+			'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
+		);
+		$html_champs = array();
+
+		// documents joints
 		$docs = array();
-		$noms_fichiers = array();
 		if (!empty($docs_obj[$cle])) {
 			foreach ($docs_obj[$cle] as $d) {
-				$fichier = $d['fichier'];
 				$fiche = array(
 					'id' => (int) $d['id_document'],
 					'titre' => sptg_titre_propre($d['titre']),
-					'descriptif' => sptg_html($d['descriptif'], $routes),
 					'extension' => $d['extension'],
 					'mode' => $d['mode'],
 					'largeur' => (int) $d['largeur'],
@@ -341,43 +607,35 @@ function sptg_exporter(array $o) {
 					'taille' => (int) $d['taille'],
 					'credits' => $d['credits'],
 				);
+				$desc = sptg_rendre_texte($d['descriptif'], $ctx, 'document ' . $d['id_document'] . ' descriptif');
+				$fiche['descriptif'] = $desc['val'];
 				if ($d['distant'] == 'oui') {
-					$fiche['url'] = $fichier;
+					$fiche['url'] = $d['fichier'];
 				} else {
-					$fiche['url'] = '/IMG/' . $fichier;
-					if ($o['copier_documents'] and is_file(_DIR_IMG . $fichier)) {
-						$nom = basename($fichier);
-						if (isset($noms_fichiers[$nom])) {
-							$nom = $d['id_document'] . '-' . $nom;
-						}
-						$noms_fichiers[$nom] = 1;
-						sptg_mkdir($dirabs);
-						copy(_DIR_IMG . $fichier, $dirabs . $nom);
-						$fiche['local'] = $nom;
-						if (!$o['conserver_img']) {
-							$remp['IMG/' . $fichier] = $it['route'] . '/' . $nom;
+					$fiche['url'] = '/IMG/' . $d['fichier'];
+					if ($o['copier_documents']) {
+						$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], '/IMG/' . $d['fichier']);
+						if (strpos($ref, '/') !== 0) {
+							$fiche['local'] = $ref;
 						}
 					}
 				}
 				$docs[] = array_filter($fiche, function ($v) {
 					return $v !== '' and $v !== null and $v !== 0;
 				});
-				$rapport['documents'] = isset($rapport['documents']) ? $rapport['documents'] + 1 : 1;
 			}
 		}
 
 		// logo
 		$logo = array();
-		if ($info['type'] != 'document') {
-			$g = glob(_DIR_IMG . sptg_prefixe_logo($type) . $id . '.*');
-			if ($g) {
-				$lf = basename($g[0]);
-				$logo['logo_url'] = '/IMG/' . $lf;
-				if ($o['copier_documents']) {
-					$ext = pathinfo($lf, PATHINFO_EXTENSION);
-					sptg_mkdir($dirabs);
-					copy($g[0], $dirabs . 'logo.' . $ext);
-					$logo['logo'] = 'logo.' . $ext;
+		$g = glob(_DIR_IMG . sptg_prefixe_logo($type) . $id . '.*');
+		if ($g) {
+			$lf = basename($g[0]);
+			$logo['logo_url'] = '/IMG/' . $lf;
+			if ($o['copier_documents']) {
+				$ref = sptg_fichier_ref($ctx, $g[0], '/IMG/' . $lf);
+				if (strpos($ref, '/') !== 0) {
+					$logo['logo'] = $ref;
 				}
 			}
 		}
@@ -395,7 +653,11 @@ function sptg_exporter(array $o) {
 					if ($o['conserver_source']) {
 						$source[$nom] = $v;
 					}
-					$spip[$nom] = sptg_html($v, $routes, $remp);
+					$res = sptg_rendre_texte($v, $ctx, $nom);
+					$spip[$nom] = $res['val'];
+					if ($res['fmt'] == 'html') {
+						$html_champs[] = $nom;
+					}
 					break;
 				case 'int':
 					$spip[$nom] = (int) $v;
@@ -428,7 +690,18 @@ function sptg_exporter(array $o) {
 			$header['date'] = $date;
 		}
 		$header['published'] = $publie;
-		$header['process'] = array('markdown' => false, 'twig' => false);
+
+		$corps = '';
+		$corps_fmt = 'md';
+		if (isset($info['champs']['texte'])) {
+			$res = sptg_rendre_texte(isset($r['texte']) ? $r['texte'] : '', $ctx, 'texte');
+			$corps = $res['val'];
+			$corps_fmt = $res['fmt'];
+		}
+		if ($corps_fmt == 'html') {
+			$header['process'] = array('markdown' => false, 'twig' => false);
+			$rapport['fmt_html']++;
+		}
 		if (!empty($taxo_obj[$cle])) {
 			$header['taxonomy'] = array_map('array_values', array_map('array_unique', $taxo_obj[$cle]));
 		}
@@ -436,6 +709,9 @@ function sptg_exporter(array $o) {
 			$header['taxonomy']['auteur'] = array_values(array_unique($auteurs_obj[$cle]));
 		}
 		$header['spip'] = $spip;
+		if ($html_champs) {
+			$header['spip_html'] = $html_champs;
+		}
 		if ($source) {
 			$header['spip_source'] = $source;
 		}
@@ -444,10 +720,10 @@ function sptg_exporter(array $o) {
 		}
 		$header = array_merge($header, $logo);
 
-		$corps = isset($info['champs']['texte']) ? sptg_html(isset($r['texte']) ? $r['texte'] : '', $routes, $remp) : '';
 		sptg_ecrire($dirabs . $type . '.md', sptg_page_md($header, $corps));
 		$rapport['pages']++;
 		$compte[$info['label']] = isset($compte[$info['label']]) ? $compte[$info['label']] + 1 : 1;
+		unset($ctx);
 	}
 
 	// collections (pages d'index pour les objets hors rubriques)
@@ -455,83 +731,158 @@ function sptg_exporter(array $o) {
 		sptg_ecrire($pages . $c['dir'] . 'collection.md', sptg_page_md(array(
 			'title' => $c['info']['label'],
 			'process' => array('markdown' => false, 'twig' => false),
-			'content' => array('items' => '@self.children', 'order' => array('by' => 'title', 'dir' => 'asc')),
 		)));
 	}
 
 	// accueil
 	$nom_site = isset($GLOBALS['meta']['nom_site']) ? $GLOBALS['meta']['nom_site'] : 'Site SPIP';
 	$desc_site = isset($GLOBALS['meta']['descriptif_site']) ? $GLOBALS['meta']['descriptif_site'] : '';
-	sptg_ecrire($pages . '01.home/home.md', sptg_page_md(array(
-		'title' => $nom_site,
-		'process' => array('markdown' => false, 'twig' => false),
-	), sptg_html($desc_site, $routes)));
+	$ctx = array(
+		'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'], 'copier' => false,
+		'dirabs' => $pages . '01.home/', 'route' => '/home', 'noms' => array(),
+		'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
+	);
+	$res = sptg_rendre_texte($desc_site, $ctx, 'descriptif_site');
+	$hh = array('title' => $nom_site);
+	if ($res['fmt'] == 'html') {
+		$hh['process'] = array('markdown' => false, 'twig' => false);
+	}
+	sptg_ecrire($pages . '01.home/home.md', sptg_page_md($hh, $res['val']));
+	unset($ctx);
 
-	// ---- 5. Configuration Grav
-	$slug_theme = $o['nom_theme'];
-	sptg_ecrire($base . 'user/config/site.yaml', sptg_yaml(array(
+	// ---- configuration Grav
+	$taxonomies = array_values(array_unique($taxonomies));
+	$config_site = array(
 		'title' => $nom_site,
 		'lang' => isset($GLOBALS['meta']['langue_site']) ? $GLOBALS['meta']['langue_site'] : 'fr',
 		'metadata' => array('description' => textebrut(typo($desc_site))),
-	)));
-	sptg_ecrire($base . 'user/config/system.yaml', sptg_yaml(array(
-		'pages' => array('theme' => $slug_theme),
-		'taxonomies' => array_values(array_unique($taxonomies)),
-	)));
+	);
+	if ($redirects) {
+		$config_site['redirects'] = array();
+		foreach ($redirects as $ancien => $nouveau) {
+			$config_site['redirects'][preg_quote($ancien, '#') . '$'] = $nouveau;
+		}
+	}
+	$config_system = array(
+		'pages' => array(
+			'markdown' => array('extra' => false, 'auto_line_breaks' => false, 'auto_url_links' => false, 'escape_markup' => false),
+		),
+		'taxonomies' => $taxonomies,
+	);
+	if ($o['generer_theme']) {
+		$config_system['pages']['theme'] = $slug_theme;
+	}
+	$fichiers_config = array();
+	if (!$est_install) {
+		sptg_ecrire($racine . 'user/config/site.yaml', sptg_yaml($config_site));
+		sptg_ecrire($racine . 'user/config/system.yaml', sptg_yaml($config_system));
+		$fichiers_config = array('user/config');
+	}
 
-	// ---- 6. Thème
+	// ---- thème
 	if ($o['generer_theme']) {
 		$types_utilises = array();
 		foreach ($items as $it) {
 			$types_utilises[$it['info']['type']] = $it['info'];
 		}
-		sptg_generer_theme($base . 'user/themes/' . $slug_theme . '/', $slug_theme, $types_utilises, (bool) $o['inclure_emails']);
+		sptg_generer_theme($themes . $slug_theme . '/', $slug_theme, $types_utilises, (bool) $o['inclure_emails']);
 	}
 
-	// ---- 7. IMG
+	// ---- IMG conservé tel quel
+	$sous_dossiers = array('user/pages');
+	if ($o['generer_theme']) {
+		$sous_dossiers[] = 'user/themes/' . $slug_theme;
+	}
 	if ($o['conserver_img']) {
-		$n = sptg_copier_arbre(rtrim(_DIR_IMG, '/'), $base . 'IMG');
-		$n += sptg_copier_arbre(_DIR_VAR . 'cache-vignettes', $base . 'local/cache-vignettes');
+		$n = sptg_copier_arbre(rtrim(_DIR_IMG, '/'), $racine . 'IMG');
+		$n += sptg_copier_arbre(_DIR_VAR . 'cache-vignettes', $racine . 'local/cache-vignettes');
 		$rapport['details'][] = "IMG : $n fichier(s)";
+		$sous_dossiers[] = 'IMG';
+		$sous_dossiers[] = 'local';
 	}
-
 	foreach ($compte as $lab => $n) {
 		$rapport['details'][] = "$lab : $n";
 	}
 
-	sptg_ecrire($base . 'LISEZMOI-spip-to-grav.md', sptg_lisezmoi($slug_theme, $o));
+	// ---- rapport
+	$snippet = '';
+	if ($est_install) {
+		$snippet = "# À fusionner dans user/config/system.yaml\n" . sptg_yaml($config_system)
+			. "\n# À fusionner dans user/config/site.yaml\n" . sptg_yaml($config_site);
+	}
+	$tmp = sous_repertoire(_DIR_TMP, 'sptg');
+	$nom_rapport = $export_name . '-rapport.md';
+	sptg_ecrire($tmp . $nom_rapport, sptg_rapport_texte($rapport, $o, $snippet));
+	$rapport['rapport'] = $nom_rapport;
+	$rapport['snippet'] = $snippet;
 
-	// ---- 8. ZIP
-	$nom_zip = 'sptg_export_' . $stamp . '.zip';
-	sptg_zipper($base, $tmp . $nom_zip);
-	supprimer_repertoire($base);
-
-	$rapport['zip'] = $nom_zip;
+	// ---- zip (uniquement si tout s'est bien passé)
+	$rapport['zip'] = '';
+	$rapport['zip_refuse'] = '';
+	if ($o['creer_zip']) {
+		if ($rapport['ecarts']) {
+			$rapport['zip_refuse'] = count($rapport['ecarts']) . ' écart(s) de vérification';
+		} else {
+			$nom_zip = $export_name . '.zip';
+			sptg_zipper($racine, array_merge($sous_dossiers, $fichiers_config), $tmp . $nom_zip);
+			$rapport['zip'] = $nom_zip;
+		}
+	}
 	return $rapport;
 }
 
-function sptg_lisezmoi($slug, array $o) {
-	return "# Export SPIP vers Grav\n\n"
-		. "Copier le contenu de cette archive à la racine d'une installation Grav :\n\n"
-		. "- `user/pages/` : contenu\n"
-		. "- `user/themes/$slug/` : thème généré (templates Twig + blueprints)\n"
-		. "- `user/config/site.yaml`, `user/config/system.yaml` : configuration minimale (thème actif, taxonomies)\n"
-		. ($o['conserver_img'] ? "- `IMG/` (et `local/cache-vignettes/`) : à placer à la racine web de Grav ; les liens du contenu pointent vers `/IMG/...`\n" : '')
-		. "\nLes pages contiennent du HTML déjà rendu par SPIP (`process: markdown: false`).\n"
-		. "Les champs propres à chaque objet sont dans l'entête sous la clé `spip:`.\n";
+function sptg_rapport_texte(array $r, array $o, $snippet) {
+	$t = "# Rapport d'export SPIP vers Grav : " . $o['export_name'] . "\n\n";
+	$t .= "- Destination : `" . $r['racine'] . "`" . ($r['est_install'] ? " (installation Grav détectée)" : '') . "\n";
+	$t .= "- Pages : " . $r['pages'] . " (dont " . $r['fmt_html'] . " corps conservés en HTML)\n";
+	$t .= "- Objets ignorés (rubrique non exportée) : " . $r['ignores'] . "\n";
+	$t .= "- Fichiers copiés dans les pages : " . $r['stats']['fichiers'] . "\n";
+	$t .= "- Modèles d'image/document introuvables : " . $r['stats']['modeles_orphelins'] . "\n";
+	$t .= "- Redirections générées : " . $r['redirections'] . " ; anciennes URL à paramètres (non redirigeables) : " . $r['non_redirigeables'] . "\n";
+	foreach ($r['details'] as $d) {
+		$t .= "- $d\n";
+	}
+
+	$t .= "\n## Écarts de vérification (" . count($r['ecarts']) . ")\n\n";
+	$t .= "Pour chacun, le contenu est conservé en HTML. Collez ces blocs pour enrichir tests/fixtures.\n\n";
+	foreach ($r['ecarts'] as $k => $e) {
+		$t .= "### " . ($k + 1) . ". " . $e['page'] . " / " . $e['champ'] . "\n\n";
+		$t .= "Attendu (HTML normalisé de propre()) :\n```\n" . $e['attendu'] . "\n```\nObtenu (Markdown rendu en HTML) :\n```\n" . $e['obtenu'] . "\n```\n";
+		$t .= "Markdown produit :\n```\n" . $e['markdown'] . "\n```\nSource SPIP :\n```\n" . $e['source'] . "\n```\n\n";
+	}
+
+	$t .= "## Liens internes non résolus (" . count($r['liens_bruts']) . ")\n\n";
+	foreach ($r['liens_bruts'] as $l) {
+		$t .= "- " . $l['page'] . " / " . $l['champ'] . " : " . $l['url'] . "\n";
+	}
+	if ($snippet) {
+		$t .= "\n## Configuration à fusionner à la main (installation existante)\n\n```yaml\n" . $snippet . "```\n";
+	}
+	return $t;
 }
 
-function sptg_zipper($dossier, $zip) {
+function sptg_zipper($racine, array $chemins, $zip) {
 	@unlink($zip);
+	$racine = rtrim(realpath($racine), '/') . '/';
+	$fichiers = array();
+	foreach ($chemins as $c) {
+		$p = $racine . $c;
+		if (is_file($p)) {
+			$fichiers[] = $p;
+		} elseif (is_dir($p)) {
+			$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($p, FilesystemIterator::SKIP_DOTS));
+			foreach ($it as $f) {
+				if ($f->isFile()) {
+					$fichiers[] = $f->getPathname();
+				}
+			}
+		}
+	}
 	if (class_exists('ZipArchive')) {
 		$z = new ZipArchive();
 		if ($z->open($zip, ZipArchive::CREATE) === true) {
-			$racine = rtrim(realpath($dossier), '/') . '/';
-			$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($racine, FilesystemIterator::SKIP_DOTS));
-			foreach ($it as $f) {
-				if ($f->isFile()) {
-					$z->addFile($f->getPathname(), substr($f->getPathname(), strlen($racine)));
-				}
+			foreach ($fichiers as $f) {
+				$z->addFile($f, substr($f, strlen($racine)));
 			}
 			$z->close();
 			return true;
@@ -539,5 +890,5 @@ function sptg_zipper($dossier, $zip) {
 	}
 	include_spip('inc/pclzip');
 	$p = new PclZip($zip);
-	return $p->create(rtrim($dossier, '/'), PCLZIP_OPT_REMOVE_PATH, rtrim($dossier, '/')) != 0;
+	return $p->create($fichiers, PCLZIP_OPT_REMOVE_PATH, rtrim($racine, '/')) != 0;
 }

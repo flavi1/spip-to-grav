@@ -108,11 +108,11 @@ function sptg_twig_objet(array $info, $emails) {
 	$t .= "\t{% set s = page.header.spip ?? {} %}\n";
 	$t .= "\t{% include 'partials/logo.html.twig' %}\n";
 	foreach ($lead as $n) {
-		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{{ s.$n|raw }}</div>{% endif %}\n";
+		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{% if '$n' in (page.header.spip_html ?? []) %}{{ s.$n|raw }}{% else %}{{ s.$n|markdown|raw }}{% endif %}</div>{% endif %}\n";
 	}
 	$t .= "\t<div class=\"spip-texte\">{{ page.content|raw }}</div>\n";
 	foreach ($tail as $n) {
-		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{{ s.$n|raw }}</div>{% endif %}\n";
+		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{% if '$n' in (page.header.spip_html ?? []) %}{{ s.$n|raw }}{% else %}{{ s.$n|markdown|raw }}{% endif %}</div>{% endif %}\n";
 	}
 	if ($dl) {
 		$t .= "\t<dl class=\"spip-champs\">\n";

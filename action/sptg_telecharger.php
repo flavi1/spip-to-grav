@@ -10,7 +10,7 @@ function action_sptg_telecharger_dist($arg = null) {
 		$arg = $securiser_action();
 	}
 	include_spip('inc/autoriser');
-	if (!autoriser('exporter', '_sptg') or !preg_match('/^sptg_export_[0-9_]+\.zip$/', $arg)) {
+	if (!autoriser('exporter', '_sptg') or !preg_match('/^[a-z0-9][a-z0-9-]*(-rapport)?\.(zip|md)$/', $arg)) {
 		include_spip('inc/minipres');
 		echo minipres();
 		exit;
@@ -20,7 +20,7 @@ function action_sptg_telecharger_dist($arg = null) {
 		http_response_code(404);
 		exit;
 	}
-	header('Content-Type: application/zip');
+	header('Content-Type: ' . (substr($arg, -4) == '.zip' ? 'application/zip' : 'text/markdown; charset=utf-8'));
 	header('Content-Disposition: attachment; filename="' . $arg . '"');
 	header('Content-Length: ' . filesize($f));
 	readfile($f);

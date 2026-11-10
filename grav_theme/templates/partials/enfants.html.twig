@@ -10,7 +10,7 @@
 	<ul>
 	{% for c in contenus %}
 		<li><a href="{{ c.url }}">{{ c.title|e }}</a>{% if c.header.date %} <time>{{ c.date|date('d/m/Y') }}</time>{% endif %}
-		{% if c.header.spip.descriptif %}<div>{{ c.header.spip.descriptif|raw }}</div>{% endif %}</li>
+		{% if c.header.spip.descriptif %}<div>{% if 'descriptif' in (c.header.spip_html ?? []) %}{{ c.header.spip.descriptif|raw }}{% else %}{{ c.header.spip.descriptif|markdown|raw }}{% endif %}</div>{% endif %}</li>
 	{% endfor %}
 	</ul>
 </section>

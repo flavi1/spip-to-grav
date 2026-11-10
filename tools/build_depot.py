@@ -18,7 +18,7 @@ m = re.search(r'\bversion="(\d+)\.(\d+)\.\d+"', paquet)
 version = f'{m.group(1)}.{m.group(2)}.{n}'
 paquet = paquet.replace(m.group(0), f'version="{version}"', 1)
 
-EXCLU = {'.git', '.github', 'tools', 'README.md'}
+EXCLU = {'.git', '.github', 'tools', 'tests', 'README.md'}
 nom_zip = f'{prefix_dir}-{version}.zip'
 for f in os.listdir(out):  # ne garder que la dernière archive
     if f.endswith('.zip'):

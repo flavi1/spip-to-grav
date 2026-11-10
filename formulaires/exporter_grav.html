@@ -5,6 +5,29 @@
 		#ACTION_FORMULAIRE
 
 		<fieldset>
+			<legend><:sptg:legende_cible:></legend>
+			<ul class="editer-groupe">
+				<li class="editer editer_export_name[ (#ENV**{erreurs/export_name}|oui)erreur]">
+					<label for="export_name"><:sptg:label_export_name:></label>
+					[<span class="erreur_message">(#ENV**{erreurs/export_name})</span>]
+					<input type="text" class="text" name="export_name" id="export_name" value="#ENV{export_name}" />
+				</li>
+				<li class="editer editer_dossier_destination[ (#ENV**{erreurs/dossier_destination}|oui)erreur]">
+					<label for="dossier_destination"><:sptg:label_destination:></label>
+					<p class="explication"><:sptg:aide_destination:></p>
+					[<span class="erreur_message">(#ENV**{erreurs/dossier_destination})</span>]
+					[<p class="notice">(#ENV{_detection}|?{<:sptg:detection_grav:>})</p>]
+					<input type="text" class="text" name="dossier_destination" id="dossier_destination" value="#ENV{dossier_destination}" />
+				</li>
+				<li class="editer choix[ (#ENV**{erreurs/vider}|oui)erreur]">
+					[<span class="erreur_message">(#ENV**{erreurs/vider})</span>]
+					<input type="checkbox" name="vider" id="opt_vider" value="oui"[(#ENV{vider}|oui|?{' checked="checked"'})] />
+					<label for="opt_vider"><:sptg:option_vider:></label>
+				</li>
+			</ul>
+		</fieldset>
+
+		<fieldset>
 			<legend><:sptg:legende_objets:></legend>
 			<p class="explication"><:sptg:aide_objets:></p>
 			[<span class="erreur_message">(#ENV**{erreurs/objets})</span>]
@@ -49,21 +72,24 @@
 			<legend><:sptg:legende_options:></legend>
 			<ul class="editer-groupe">
 				<li class="editer choix">
-					<input type="checkbox" name="generer_theme" id="opt_theme" value="oui"[(#ENV{generer_theme}|=={oui}|?{' checked="checked"'})] />
-					<label for="opt_theme"><:sptg:option_generer_theme:></label>
-				</li>
-				<li class="editer editer_nom_theme[ (#ENV**{erreurs/nom_theme}|oui)erreur]">
-					<label for="nom_theme"><:sptg:label_nom_theme:></label>
-					[<span class="erreur_message">(#ENV**{erreurs/nom_theme})</span>]
-					<input type="text" class="text" name="nom_theme" id="nom_theme" value="#ENV{nom_theme}" />
+					<input type="checkbox" name="markdown" id="opt_md" value="oui"[(#ENV{markdown}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_md"><:sptg:option_markdown:></label>
 				</li>
 				<li class="editer choix">
-					<input type="checkbox" name="conserver_img" id="opt_img" value="oui"[(#ENV{conserver_img}|=={oui}|?{' checked="checked"'})] />
-					<label for="opt_img"><:sptg:option_conserver_img:></label>
+					<input type="checkbox" name="verifier" id="opt_verif" value="oui"[(#ENV{verifier}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_verif"><:sptg:option_verifier:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="urls_spip" id="opt_urls" value="oui"[(#ENV{urls_spip}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_urls"><:sptg:option_urls_spip:></label>
 				</li>
 				<li class="editer choix">
 					<input type="checkbox" name="copier_documents" id="opt_docs" value="oui"[(#ENV{copier_documents}|=={oui}|?{' checked="checked"'})] />
 					<label for="opt_docs"><:sptg:option_copier_documents:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="conserver_img" id="opt_img" value="oui"[(#ENV{conserver_img}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_img"><:sptg:option_conserver_img:></label>
 				</li>
 				<li class="editer choix">
 					<input type="checkbox" name="conserver_source" id="opt_src" value="oui"[(#ENV{conserver_source}|=={oui}|?{' checked="checked"'})] />
@@ -72,6 +98,20 @@
 				<li class="editer choix">
 					<input type="checkbox" name="inclure_emails" id="opt_mail" value="oui"[(#ENV{inclure_emails}|=={oui}|?{' checked="checked"'})] />
 					<label for="opt_mail"><:sptg:option_emails:></label>
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="generer_theme" id="opt_theme" value="oui"[(#ENV{generer_theme}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_theme"><:sptg:option_generer_theme:></label>
+				</li>
+				<li class="editer editer_nom_theme[ (#ENV**{erreurs/nom_theme}|oui)erreur]">
+					<label for="nom_theme"><:sptg:label_nom_theme:></label>
+					<p class="explication"><:sptg:aide_nom_theme:></p>
+					[<span class="erreur_message">(#ENV**{erreurs/nom_theme})</span>]
+					<input type="text" class="text" name="nom_theme" id="nom_theme" value="#ENV{nom_theme}" />
+				</li>
+				<li class="editer choix">
+					<input type="checkbox" name="creer_zip" id="opt_zip" value="oui"[(#ENV{creer_zip}|=={oui}|?{' checked="checked"'})] />
+					<label for="opt_zip"><:sptg:option_zip:></label>
 				</li>
 			</ul>
 		</fieldset>

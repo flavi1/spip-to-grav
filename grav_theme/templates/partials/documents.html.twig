@@ -10,7 +10,7 @@
 			{% else %}
 				<a href="{{ href }}">{{ (d.titre ?: href|split('/')|last)|e }}</a>{% if d.extension %} <small>({{ d.extension|upper }})</small>{% endif %}
 			{% endif %}
-			{% if d.descriptif %}<div class="spip-doc-descriptif">{{ d.descriptif|raw }}</div>{% endif %}
+			{% if d.descriptif %}<div class="spip-doc-descriptif">{{ d.descriptif|markdown|raw }}</div>{% endif %}
 		</li>
 	{% endfor %}
 	</ul>

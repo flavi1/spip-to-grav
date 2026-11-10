@@ -11,36 +11,47 @@ Plugin SPIP 4.1+ qui génère, depuis un site SPIP, une archive ZIP contenant :
 
 Copier ce dépôt dans `plugins/spip_to_grav/` (ou `plugins-dist/`), activer le plugin, puis **Édition → Export vers Grav** (webmestres).
 
+## Destination
+
+- Par défaut : `/tmp/grav/<export_name>/user/{pages,themes}`.
+- Le dossier de destination est modifiable. S'il contient une installation Grav (`user/`, `system/`, `index.php`), l'export s'y fait directement ; si `user/pages` n'est pas vide (ou si le thème du même nom existe), il faut cocher « vider » : `user/pages` est vidé et le thème du même nom écrasé. Les fichiers de configuration d'une installation existante ne sont jamais modifiés : le rapport donne le YAML à fusionner (taxonomies, thème, redirections).
+- Le thème s'appelle `<export_name>-theme` par défaut ; on peut n'exporter que les pages.
+- Le zip est optionnel et n'est créé que si la vérification n'a relevé aucun écart.
+
 ## Sélection de l'export (cases à cocher)
 
-- types d'objets (noyau **et** objets de plugins, détectés via `lister_tables_objets_sql()` : brèves, lexique…) ;
-- mots-clés (→ taxonomies Grav, une par groupe de mots) et documents joints ;
-- secteurs (rubriques de premier niveau, arborescence incluse) ;
-- statuts (publié, proposé, en rédaction, refusé, poubelle) ;
-- options : thème, conserver `IMG`, copier les documents dans le dossier de leur page, conserver le texte source SPIP, inclure les emails des auteurs.
+types d'objets (noyau **et** plugins : brèves, lexique… détectés via `lister_tables_objets_sql()`), mots-clés (taxonomies), documents, secteurs, statuts, puis options (Markdown, vérification, URL SPIP, documents dans les pages, IMG conservé, source SPIP, emails, thème, zip).
 
-## Introspection des objets « exotiques »
+## Chemins d'abord, conversion ensuite
 
-Pour chaque table d'objet, le plugin lit sa déclaration (`trouver_table`) : clé primaire, champs et types SQL, colonne de titre, date, statut, présence de `id_rubrique`. Il en déduit :
+Toutes les routes Grav (`rubrique/sous-rubrique/mon-article`) sont calculées **avant** le rendu d'un seul texte. Les liens internes `[->art12]`, `[->rub3]`… sont remplacés dans le source par la route cible, puis `propre()` produit `<a href="/rubrique/mon-article">`. Le slug réutilise l'URL SPIP actuelle quand elle est descriptive (URLs propres/arborescentes), sinon le titre.
 
-- le placement : dans le dossier de la rubrique si `id_rubrique` existe, sinon dans une collection racine (`NN.<objets>/`) ;
-- le frontmatter : `title`, `date`, `published`, `taxonomy`, et tous les autres champs sous `spip:` ;
-- le template Twig `templates/<type>.html.twig` et le blueprint `blueprints/<type>.yaml` (text, textarea, number, toggle, select…).
+## Markdown : fidèle à `propre()`
 
-Chaque page est un fichier `<type>.md` (ex. `article.md`, `breve.md`), donc `template` = type d'objet.
+Le HTML de `propre()` (donc exactement ce que montre le site) est converti en Markdown par `inc/sptg_markdown.php`. Principe : on ne convertit que ce qui se traduit **exactement** (titres `###`, paragraphes, `<br />`, listes, citations, code, `**gras**`, `*italique*`, liens, images) ; tout le reste (tableaux, `<div>`, `<span class>`, notes, ancres…) reste en HTML brut, que Markdown laisse passer. Les classes SPIP (`spip`, `spip_in`, `spip_out`…) sont ignorées à la comparaison.
 
-## Contenu
+Modèles `<imgN>`, `<docN>`, `<embN>` : le fichier est copié dans le dossier de la page (média Grav) et référencé par son nom (`![titre](photo.jpg)`). L'alignement (`|left`) n'est pas conservé.
 
-Les textes sont rendus par `propre()` : le corps des pages est du HTML (`process: markdown: false`). Les liens internes `[->art12]`, `[->rub3]`… sont convertis en routes Grav. Option : conserver aussi le texte source SPIP sous `spip_source`.
+## Vérification et tests unitaires
 
-## Limites connues (v0.1)
+Pour chaque texte : HTML de `propre()` → Markdown → HTML (rendu qui reproduit Parsedown pour le sous-ensemble émis) → comparaison des deux HTML normalisés. En cas d'écart, le texte est conservé en HTML (`process: markdown: false` pour le corps, champ listé dans `spip_html` sinon) et l'écart est consigné dans le rapport avec : attendu, obtenu, Markdown produit, source SPIP. Les liens internes restés en `spip.php?…` sont aussi listés.
 
-- pas de multilinguisme (champ `lang` conservé sous `spip:`, pas de fichiers `page.fr.md`) ;
-- forums, pétitions, sites syndiqués non exportés ;
-- pas de page par mot-clé (taxonomies uniquement) ;
-- l'export est synchrone : sur de très gros sites, augmenter `max_execution_time`.
+Pour améliorer le convertisseur : coller un échantillon du rapport dans `tests/fixtures/mon_cas.html` (fragment HTML tel que produit par `propre()`), puis `php tests/run.php`. Les attentes de Markdown exact sont dans `tests/expected.php`.
 
-Licence : GPL v3.
+## URL et redirections
+
+Les anciennes URL SPIP qui sont des chemins (URLs propres, arborescentes, `.html`) génèrent des `redirects` Grav. Les URL à paramètres (`spip.php?page=article&id_article=12`) ne peuvent pas être redirigées par Grav : elles sont comptées dans le rapport.
+
+## Contenu des pages
+
+Chaque page est `<type>.md` (`article.md`, `breve.md`…). Entête : `title`, `date`, `published`, `taxonomy`, puis tous les champs de la table sous `spip:`. Les blueprints et templates du thème sont générés d'après la structure SQL de chaque type.
+
+## Limites connues
+
+- pas de multilinguisme (`lang` conservé sous `spip:`) ;
+- forums, pétitions, sites syndiqués non exportés ; pas de page par mot-clé ;
+- notes de bas de page : seules celles du corps sont reprises (en HTML) ;
+- la conformité réelle à Parsedown n'a pas pu être testée sans Grav : le rapport est fait pour faire remonter les écarts.
 
 ## Mises à jour automatiques depuis l'admin SPIP (dépôt SVP)
 
