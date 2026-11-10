@@ -93,6 +93,7 @@
 				<li class="editer choix">
 					<input type="checkbox" name="objets[]" id="objet_#CLE" value="#CLE"[(#CLE|in_array{#ENV{objets}}|?{' checked="checked"'})] />
 					<label for="objet_#CLE">[(#VALEUR{label})]</label>
+					[<p class="explication">(#VALEUR{aide})</p>]
 				</li>
 				</BOUCLE_objets>
 			</ul>

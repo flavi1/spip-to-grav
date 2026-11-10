@@ -27,7 +27,7 @@ Copier ce dépôt dans `plugins/spip_to_grav/` (ou `plugins-dist/`), activer le 
 
 ## Sélection de l'export (cases à cocher)
 
-types d'objets (noyau **et** plugins : brèves, lexique… détectés via `lister_tables_objets_sql()`), mots-clés (taxonomies), documents, secteurs, statuts, puis options (Markdown, vérification, URL SPIP, stockage des images, source SPIP, emails, thème, zip).
+types d'objets (tous cochés par défaut sauf les **auteurs** : cocher « Auteurs » crée une page publique par auteur et rattache les articles à leurs auteurs, sans effet sur les comptes de rédacteurs Grav, qui dépendent de leur propre option ; noyau **et** plugins : brèves, lexique… détectés via `lister_tables_objets_sql()`), mots-clés (taxonomies), documents, secteurs, statuts, puis options (Markdown, vérification, URL SPIP, stockage des images, source SPIP, emails, thème, zip).
 
 ## Stockage des images (au choix)
 

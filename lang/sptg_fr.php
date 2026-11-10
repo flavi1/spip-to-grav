@@ -8,6 +8,7 @@ $GLOBALS[$GLOBALS['idx_lang']] = array(
 	'titre_page' => 'Exporter le site vers Grav',
 	'intro' => 'Cochez ce que vous souhaitez exporter. Le résultat est une archive ZIP contenant <code>user/pages</code>, un thème Grav (templates Twig + blueprints) généré d’après la structure de vos tables, et la configuration minimale du site.',
 
+	'aide_objet_auteur' => 'Crée une page publique par auteur et rattache les articles à leurs auteurs. N’a aucun effet sur les comptes de rédacteurs Grav, créés par l’option plus bas, indépendante de cette case.',
 	'legende_objets' => 'Types d’objets à exporter',
 	'aide_objets' => 'Les objets ajoutés par des plugins (brèves, lexique…) sont détectés automatiquement d’après la déclaration de leurs tables.',
 	'objet_mot' => 'Mots-clés (exportés comme taxonomies Grav)',

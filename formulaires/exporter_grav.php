@@ -11,6 +11,9 @@ function formulaires_exporter_grav_charger_dist() {
 	$objets = array();
 	foreach (sptg_introspecter(true) as $type => $i) {
 		$objets[$type] = array('label' => $i['label'] . ' (' . $i['nb'] . ')');
+		if ($type == 'auteur') {
+			$objets[$type]['aide'] = _T('sptg:aide_objet_auteur');
+		}
 	}
 	$objets['mot'] = array('label' => _T('sptg:objet_mot'));
 	$objets['document'] = array('label' => _T('sptg:objet_document'));
@@ -47,7 +50,8 @@ function formulaires_exporter_grav_charger_dist() {
 		'_statuts' => $statuts,
 		'_urls_params' => $urls_params,
 		'_detection' => sptg_chemin_valide($dest) ? sptg_detecter_grav($dest) : false,
-		'objets' => array_keys($objets),
+		// les auteurs ne sont pas cochés par défaut (pages publiques d'auteurs) ; les comptes de rédacteurs sont indépendants
+		'objets' => array_values(array_diff(array_keys($objets), array('auteur'))),
 		'secteurs' => array_keys($secteurs),
 		'statuts' => array('publie'),
 		'export_name' => $export_name,
