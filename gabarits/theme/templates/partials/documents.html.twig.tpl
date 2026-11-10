@@ -4,6 +4,7 @@
 	<ul>
 	{% for d in page.header.documents %}
 		{% set href = d.local ? page.url ~ '/' ~ d.local : d.url %}
+		{% if not d.local and href starts with '/' and not (href starts with '//') %}{% set href = base_url_relative ~ href %}{% endif %}
 		<li>
 			{% if d.mode == 'image' or d.extension in ['jpg','jpeg','png','gif','webp','svg'] %}
 				<a href="{{ href }}"><img src="{{ href }}" alt="{{ d.titre|e('html_attr') }}" loading="lazy"{% if d.largeur %} width="{{ d.largeur }}"{% endif %}{% if d.hauteur %} height="{{ d.hauteur }}"{% endif %}></a>

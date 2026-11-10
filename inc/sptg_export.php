@@ -57,6 +57,45 @@ function sptg_copier_arbre($src, $dst) {
 	return $n;
 }
 
+/** Version du plugin installé : paquet.xml (version calculée par le dépôt SVP : x.y.<commits>) et fichier BUILD */
+function sptg_version_plugin() {
+	$racine = dirname(__DIR__);
+	$v = '';
+	if (is_file($racine . '/paquet.xml') and preg_match('/<paquet\b[^>]*\bversion="([^"]+)"/s', file_get_contents($racine . '/paquet.xml'), $m)) {
+		$v = $m[1];
+	}
+	$build = is_file($racine . '/BUILD') ? trim(file_get_contents($racine . '/BUILD')) : '';
+	return $build !== '' ? $build : ($v !== '' ? $v . ' (source, sans BUILD)' : 'inconnue');
+}
+
+/**
+ * Vide les caches d'une installation Grav (équivalent de `bin/grav clear-cache`) : cache/, assets/ et images/
+ * (cache des images) ; ni tmp/ (rapports du plugin), ni les fichiers cachés. Retourne le nombre d'éléments supprimés.
+ */
+function sptg_vider_cache_grav($racine) {
+	$n = 0;
+	foreach (array('cache', 'assets', 'images') as $d) {
+		$dir = rtrim($racine, '/') . '/' . $d;
+		if (!is_dir($dir) or is_link($dir)) {
+			continue;
+		}
+		foreach (scandir($dir) as $f) {
+			if ($f === '.' or $f === '..' or $f[0] === '.' or $f === 'index.html') {
+				continue;
+			}
+			$p = "$dir/$f";
+			if (is_dir($p) and !is_link($p)) {
+				sptg_rm_contenu($p);
+				@rmdir($p);
+			} else {
+				@unlink($p);
+			}
+			$n++;
+		}
+	}
+	return $n;
+}
+
 function sptg_rm_contenu($dir) {
 	if (!is_dir($dir)) {
 		return;
@@ -106,6 +145,26 @@ function sptg_titre_propre($t, $lang = '') {
 function sptg_cle_tri($titre) {
 	$n = recuperer_numero($titre);
 	return array($n === '' ? PHP_INT_MAX : (int) $n, strtolower(sptg_titre_propre($titre)));
+}
+
+/**
+ * Rend inoffensives les séquences Twig (« {{ », « {% », « {# ») d'un corps de page : `{` devient `&#123;`
+ * (affiché `{` en Markdown comme en HTML). Double sécurité en plus de `process.twig: false` : une page
+ * ne doit pas pouvoir tomber en erreur 500 parce que son texte contient des accolades (ex. « {{} »).
+ * Les blocs de code (``` et `…`) sont laissés tels quels.
+ */
+function sptg_neutraliser_twig($texte) {
+	$texte = (string) $texte;
+	if (!preg_match('/\{[{%#]/', $texte)) {
+		return $texte;
+	}
+	$parts = preg_split('/(```.*?```|`[^`\n]*`)/s', $texte, -1, PREG_SPLIT_DELIM_CAPTURE);
+	foreach ($parts as $i => $part) {
+		if ($i % 2 === 0) {
+			$parts[$i] = preg_replace('/\{(?=[{%#])/', '&#123;', $part);
+		}
+	}
+	return implode('', $parts);
 }
 
 /**
@@ -1220,7 +1279,7 @@ function sptg_exporter(array $o) {
 			}
 			$route_al = $it['pub'] . ($lang_fichier !== '' ? ' [' . $lang_fichier . ']' : '');
 			if (preg_match('/\{\{|\{%|\{#/', $corps)) {
-				$rapport['alertes']['Contenu contenant « {{ », « {% » ou « {# » (Twig neutralisé : process.twig=false)'][] = $route_al;
+				$rapport['alertes']['Contenu contenant « {{ », « {% » ou « {# » (Twig neutralisé : accolades échappées et process.twig=false)'][] = $route_al;
 			}
 			foreach (array('script', 'iframe', 'embed', 'object', 'form', 'style') as $balise_al) {
 				if (stripos($corps, '<' . $balise_al) !== false) {
@@ -1233,6 +1292,7 @@ function sptg_exporter(array $o) {
 			if ($type !== 'rubrique' and isset($info['champs']['texte']) and trim(strip_tags($corps)) === '' and stripos($corps, '<img') === false) {
 				$rapport['alertes']['Page au corps vide (hors rubriques)'][] = $route_al;
 			}
+			$corps = sptg_neutraliser_twig($corps);
 			if ($corps_fmt == 'html') {
 				$header['process'] = array('markdown' => false, 'twig' => false);
 				$rapport['fmt_html']++;
@@ -1398,6 +1458,8 @@ function sptg_exporter(array $o) {
 	}
 
 	$rapport['logos_survol'] = sptg_logos_survol_nb();
+	// cache de l'installation Grav existante : sans cela, pages et templates précédents restent servis
+	$rapport['cache_vide'] = $est_install ? sptg_vider_cache_grav($racine) : null;
 
 	// ---- comptes des auteurs (rédacteurs admin2, sans mot de passe)
 	if ($o['creer_comptes']) {
@@ -1461,6 +1523,7 @@ function sptg_exporter(array $o) {
 
 function sptg_rapport_texte(array $r, array $o, $snippet) {
 	$t = "# Rapport d'export SPIP vers Grav : " . $o['export_name'] . "\n\n";
+	$t .= "- Plugin spip_to_grav : `" . sptg_version_plugin() . "`\n";
 	$t .= "- Destination : `" . $r['racine'] . "`" . ($r['est_install'] ? " (installation Grav détectée)" : '') . "\n";
 	$t .= "- Pages : " . $r['pages'] . " (dont " . $r['fmt_html'] . " corps conservés en HTML)\n";
 	$t .= "- Objets ignorés (rubrique non exportée) : " . $r['ignores'] . "\n";
@@ -1470,6 +1533,10 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	$t .= "- Modèles d'image/document introuvables : " . $r['stats']['modeles_orphelins'] . "\n";
 	if ($r['grav']) {
 		$t .= "- Grav : " . $r['grav'] . "\n";
+	}
+	if (isset($r['cache_vide'])) {
+		$t .= "- Cache Grav de la destination vidé (cache/, assets/, images/) : " . (int) $r['cache_vide'] . " élément(s)."
+			. " Si le site servi est ailleurs que dans cette destination, videz aussi son cache (bin/grav clear-cache).\n";
 	}
 	if ($r['theme_helpers']) {
 		$t .= "- " . $r['theme_helpers'] . "\n";

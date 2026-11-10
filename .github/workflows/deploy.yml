@@ -30,7 +30,7 @@ jobs:
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           REPO="${GITHUB_REPOSITORY#*/}"
           python3 tools/build_depot.py _site "https://${OWNER}.github.io/${REPO}/" \
-            "$(git rev-list --count HEAD)" "$(git log -1 --format=%ct)"
+            "$(git rev-list --count HEAD)" "$(git log -1 --format=%ct)" "$GITHUB_SHA"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

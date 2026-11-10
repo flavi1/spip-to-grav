@@ -309,6 +309,8 @@ foreach ($fichiers_md as $f) {
 	}
 }
 t_eq($sans, array(), 'twig : process.twig=false dans toutes les pages');
+$txt_rap = sptg_rapport_texte($r, array('export_name' => 'demo'), '');
+t_ok(strpos($txt_rap, '- Plugin spip_to_grav : `') !== false, 'rapport : version du plugin');
 
 // ------------------------------------------------ 14. logos (documents SPIP 4.x), liens espace privé, rapport
 sptg_scenario(array(

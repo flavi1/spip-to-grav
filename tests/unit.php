@@ -526,4 +526,24 @@ t_eq(sptg_url_vers_objet('/spip.php?page=contact', $h), null, 'liens spip : page
 t_eq(sptg_url_vers_objet('/une-page', $h), null, 'liens spip : URL ordinaire -> rien');
 t_eq(sptg_url_vers_objet('mailto:a@b.org', $h), null, 'liens spip : mailto -> rien');
 
+
+// ---- neutralisation Twig du contenu
+t_eq(sptg_neutraliser_twig('a {{}} b {% x %} c {# d #}'), 'a &#123;{}} b &#123;% x %} c &#123;# d #}', 'twig : accolades échappées');
+t_eq(sptg_neutraliser_twig('code `{{ x }}` et ```' . "\n" . '{% y %}' . "\n" . '```'), 'code `{{ x }}` et ```' . "\n" . '{% y %}' . "\n" . '```', 'twig : code laissé tel quel');
+t_eq(sptg_neutraliser_twig('{ simple } et {x}'), '{ simple } et {x}', 'twig : accolades ordinaires intactes');
+
+// ---- vidage du cache Grav
+$cg = sys_get_temp_dir() . '/sptg_cg_' . getmypid();
+foreach (array('cache/compiled/a', 'cache/twig', 'assets', 'images/x', 'user/pages', 'tmp/sptg') as $d) { @mkdir("$cg/$d", 0777, true); }
+file_put_contents("$cg/cache/compiled/a/f.php", 'x'); file_put_contents("$cg/cache/.htaccess", 'x'); file_put_contents("$cg/tmp/sptg/rapport.md", 'x');
+file_put_contents("$cg/user/pages/p.md", 'x'); file_put_contents("$cg/images/x/i.png", 'x');
+t_eq(sptg_vider_cache_grav($cg), 3, 'cache grav : 3 éléments supprimés (compiled, twig, images/x)');
+t_ok(is_file("$cg/cache/.htaccess") and is_file("$cg/tmp/sptg/rapport.md") and is_file("$cg/user/pages/p.md"), 'cache grav : fichiers cachés, tmp et pages conservés');
+t_ok(!is_file("$cg/cache/compiled/a/f.php") and !is_dir("$cg/images/x"), 'cache grav : cache et images vidés');
+t_ok(sptg_version_plugin() !== '', 'version du plugin renseignée');
+
+// ---- gabarits : préfixe de l'installation sur les chemins racine
+$logo_tpl = file_get_contents(__DIR__ . '/../gabarits/theme/templates/partials/logo.html.twig.tpl');
+t_ok(strpos($logo_tpl, 'base_url_relative ~ logo') !== false, 'logo : préfixe base_url_relative');
+
 t_fin('unit');

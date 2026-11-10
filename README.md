@@ -105,6 +105,14 @@ Option « Créer un compte de rédacteur Grav (admin2) pour chaque auteur » (co
 
 Prérequis côté Grav (rappelés dans le rapport) : plugins `login`, `email`, `api`, `admin2`, un expéditeur configuré (`plugins.email.from` et moteur d'envoi), idéalement `plugins.login.site_host`. Sans envoi d'email, le lien ne part pas : l'administrateur peut alors définir le mot de passe lui-même.
 
+## Vérifier la version, vider le cache
+
+- Le rapport commence par la **version du plugin** utilisée (`x.y.<nb de commits> <commit> <date>`, lue dans le `BUILD` du zip du dépôt SVP). Après un push, le dépôt est reconstruit par GitHub Actions (1 à 2 minutes), puis il faut mettre à jour le plugin dans SPIP (Plugins → mettre à jour) : si la version du rapport n'est pas la dernière, c'est l'ancien code qui tourne.
+- Quand la destination est une **installation Grav existante**, l'export vide ses caches (`cache/`, `assets/`, `images/` ; pas `tmp/`) : sans cela Grav continue de servir les pages et templates précédents. Si le site servi est ailleurs que la destination, vider son cache (`bin/grav clear-cache`).
+- Le thème généré porte `<meta name="generator" content="spip_to_grav AAAA-MM-JJ HH:MM">` (et le rapport la même valeur) : dans le code source d'une page, elle prouve quel thème est servi.
+- Les chemins d'image de l'entête (`logo_url`, documents sans copie locale) sont écrits depuis la racine du site (`/images/…`) ; le thème y ajoute le préfixe de l'installation (`base_url_relative`, ex. `/nouveau-site`).
+- Les séquences Twig littérales (`{{`, `{%`, `{#`) restant dans un corps de page sont échappées en `&#123;` (hors blocs de code), en plus de `process.twig: false`.
+
 ## Publication différée (`publish_date`)
 
 Grav masque une page jusqu'à son `publish_date` (option `system.pages.publish_dates`, active par défaut ; champ déjà présent dans l'onglet Options d'admin2). L'export le renseigne pour les **articles publiés dont la date est dans le futur, quand la meta SPIP `post_dates` vaut « non »** (SPIP les cache alors jusqu'à leur date). Avec `post_dates` à « oui » (défaut de SPIP), ces articles sont visibles dans SPIP : ils le restent dans Grav, sans `publish_date`. Les pages concernées sont listées dans « Points d'attention » du rapport. Le test se fait à la date de l'export : un article déjà passé n'a pas de `publish_date`.

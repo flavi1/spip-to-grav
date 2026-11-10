@@ -5,10 +5,11 @@ Version automatique : <base de paquet.xml>.<nombre de commits>, injectée unique
 dans le zip (le dépôt git n'est jamais modifié).
 Usage : build_depot.py <dossier_sortie> <url_publique_du_depot> <nb_commits> <timestamp_dernier_commit>
 """
-import hashlib, os, re, sys, zipfile
+import hashlib, os, re, sys, time, zipfile
 from xml.sax.saxutils import escape
 
 out, url, n, ts = sys.argv[1], sys.argv[2].rstrip('/') + '/', int(sys.argv[3]), int(sys.argv[4])
+sha = sys.argv[5] if len(sys.argv) > 5 else 'local'
 racine = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.makedirs(out, exist_ok=True)
 
@@ -33,6 +34,7 @@ with zipfile.ZipFile(os.path.join(out, nom_zip), 'w', zipfile.ZIP_DEFLATED) as z
                 continue
             if rel == 'paquet.xml':
                 z.writestr(f'{prefix_dir}/paquet.xml', paquet)
+                z.writestr(f'{prefix_dir}/BUILD', f'{version} {sha[:7]} {time.strftime("%Y-%m-%d %H:%M", time.gmtime(ts))} UTC\n')
             else:
                 z.write(p, f'{prefix_dir}/{rel}')
 taille = os.path.getsize(os.path.join(out, nom_zip))
