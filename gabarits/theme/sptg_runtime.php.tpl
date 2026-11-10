@@ -181,9 +181,71 @@ class Runtime
         $cle = self::cleLegacy($chemin, $requete);
         $d = $this->lire($this->dir . '/_legacy/urls/' . self::nomLegacy($cle));
         if (!$d or empty($d['type']) or empty($d['id'])) {
+            $d = $this->formeCompatSpip($chemin, $requete);
+        }
+        if (!$d) {
             return null;
         }
         return $this->resoudre($d['type'], (int) $d['id']);
+    }
+
+    /** Types d'objets indexés (sous-dossiers de spip-id, hors _legacy) */
+    private function typesIndexes()
+    {
+        $types = array();
+        foreach ((array) glob($this->dir . '/*', GLOB_ONLYDIR) as $d) {
+            $n = basename($d);
+            if ($n !== '' && $n[0] !== '_') {
+                $types[] = $n;
+            }
+        }
+        return $types;
+    }
+
+    /**
+     * Formes d'URL que SPIP accepte toujours, quel que soit le jeu d'URL du site
+     * (ecrire/inc/urls.php, nettoyer_url_page) :
+     *   /article12  /article12.html   spip.php?article12   article.php3?id_article=12
+     * ainsi que spip.php?page=article&id_article=12.
+     * Calculées ici plutôt qu'écrites une fois par objet dans l'index.
+     *
+     * @return array|null ['type', 'id']
+     */
+    private function formeCompatSpip($chemin, $requete)
+    {
+        $types = $this->typesIndexes();
+        if (!$types) {
+            return null;
+        }
+        $alt = implode('|', array_map(function ($t) {
+            return preg_quote($t, ',');
+        }, $types));
+        $chemin = rawurldecode((string) $chemin);
+        $requete = rawurldecode(str_replace('&amp;', '&', (string) $requete));
+        $racine = (bool) preg_match(',^(?:[^?]*/)?(?:spip\.php)?$,', $chemin);
+        $m = array();
+        // /article12  /article12.html
+        if (preg_match(',^(?:[^?]*/)?(' . $alt . ')([0-9]+)(?:\.html)?$,', $chemin, $m)) {
+            return array('type' => $m[1], 'id' => (int) $m[2]);
+        }
+        // article.php3?id_article=12
+        if (preg_match(',^(?:[^?]*/)?(' . $alt . ')\.php3?$,', $chemin, $m)
+            && preg_match(',(?:^|&)id_' . preg_quote($m[1], ',') . '=([0-9]+)(?:&|$),', $requete, $m1)) {
+            return array('type' => $m[1], 'id' => (int) $m1[1]);
+        }
+        if ($racine) {
+            // spip.php?article12
+            if (preg_match(',^(' . $alt . ')([0-9]+)=?(?:&.*)?$,', $requete, $m)) {
+                return array('type' => $m[1], 'id' => (int) $m[2]);
+            }
+            // spip.php?page=article&id_article=12
+            parse_str($requete, $q);
+            if (isset($q['page']) && is_string($q['page']) && in_array($q['page'], $types, true)
+                && isset($q['id_' . $q['page']]) && ctype_digit((string) $q['id_' . $q['page']])) {
+                return array('type' => $q['page'], 'id' => (int) $q['id_' . $q['page']]);
+            }
+        }
+        return null;
     }
 
     // ------------------------------------------------------------------ traductions

@@ -1,7 +1,7 @@
 <?php
 /**
  * Génération du thème Grav (templates Twig + blueprints) d'après la structure
- * des tables SPIP introspectées. Le socle statique est dans grav_theme/.
+ * des tables SPIP introspectées. Le socle statique (blueprints, css) est dans grav_theme/ ; les fichiers PHP et Twig sont générés depuis gabarits/.
  */
 if (!defined('_ECRIRE_INC_VERSION')) {
 	return;
@@ -71,7 +71,63 @@ function sptg_blueprint_objet(array $info, $emails) {
 	);
 }
 
-/** Template Twig spécifique à un type d'objet */
+// ---------------------------------------------------------------- gabarits
+
+/** Dossier des « templates de templates » (fichiers .tpl dont sont générés les fichiers PHP et Twig du thème) */
+function sptg_gabarits_dir() {
+	return dirname(__DIR__) . '/gabarits';
+}
+
+/**
+ * Rend un gabarit.
+ *
+ * Marqueurs : @@NOM@@ (majuscules, chiffres, _). Un marqueur seul sur sa ligne est remplacé par un
+ * bloc (la ligne est supprimée si le bloc est vide) ; ailleurs, par du texte en ligne. Un marqueur sans
+ * valeur est une erreur (exception) : un thème ne doit jamais contenir de marqueur oublié. Les valeurs ne
+ * sont pas ré-interprétées (pas d'injection de marqueurs).
+ *
+ * @param string $nom  chemin relatif à gabarits/, sans le suffixe .tpl (ex. 'objet/champ_texte.twig')
+ * @param array  $vars NOM => valeur
+ * @throws RuntimeException
+ */
+function sptg_gabarit($nom, array $vars) {
+	$f = sptg_gabarits_dir() . '/' . $nom . '.tpl';
+	if (!is_file($f)) {
+		throw new RuntimeException("Gabarit introuvable : $nom");
+	}
+	return sptg_gabarit_texte(file_get_contents($f), $vars, $nom);
+}
+
+function sptg_gabarit_texte($texte, array $vars, $nom = '?') {
+	$valeur = function ($cle) use ($vars, $nom) {
+		if (!array_key_exists($cle, $vars)) {
+			throw new RuntimeException("Gabarit $nom : variable $cle non fournie");
+		}
+		return (string) $vars[$cle];
+	};
+	$lignes = explode("\n", $texte);
+	$out = array();
+	foreach ($lignes as $l) {
+		if (preg_match('/^[ \t]*@@([A-Z][A-Z0-9_]*)@@[ \t]*$/', $l, $m)) {
+			$v = rtrim($valeur($m[1]), "\n");
+			if ($v !== '') {
+				$out[] = $v;
+			}
+			continue;
+		}
+		$out[] = preg_replace_callback('/@@([A-Z][A-Z0-9_]*)@@/', function ($m) use ($valeur) {
+			return $valeur($m[1]);
+		}, $l);
+	}
+	return implode("\n", $out);
+}
+
+/** Nombre de marqueurs @@NOM@@ non résolus dans un texte généré (0 attendu) */
+function sptg_gabarit_restes($texte) {
+	return preg_match_all('/@@[A-Z][A-Z0-9_]*@@/', (string) $texte);
+}
+
+/** Template Twig spécifique à un type d'objet, généré depuis gabarits/objet/ */
 function sptg_twig_objet(array $info, $emails) {
 	$champs = sptg_champs_exportables($info, $emails);
 	$masques = sptg_champs_masques_affichage();
@@ -101,162 +157,60 @@ function sptg_twig_objet(array $info, $emails) {
 		return array_search($a, $ordre) <=> array_search($b, $ordre);
 	});
 
-	$t = "{% extends 'partials/base.html.twig' %}\n\n{% block content %}\n";
-	$t .= '<article class="spip-objet spip-' . $info['type'] . "\">\n";
-	$t .= "\t<header>\n\t\t<h1>{{ page.title|e }}</h1>\n";
-	$t .= "\t\t{% if page.header.date %}<time datetime=\"{{ page.date|date('c') }}\">{{ page.date|date('d/m/Y') }}</time>{% endif %}\n\t</header>\n";
-	$t .= "\t{% set s = page.header.spip ?? {} %}\n";
-	$t .= "\t{% include 'partials/logo.html.twig' %}\n";
-	foreach ($lead as $n) {
-		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{% if '$n' in (page.header.spip_html ?? []) %}{{ s.$n|raw }}{% else %}{{ s.$n|markdown|raw }}{% endif %}</div>{% endif %}\n";
-	}
-	$t .= "\t<div class=\"spip-texte\">{{ page.content|raw }}</div>\n";
-	foreach ($tail as $n) {
-		$t .= "\t{% if s.$n %}<div class=\"spip-champ spip-$n\">{% if '$n' in (page.header.spip_html ?? []) %}{{ s.$n|raw }}{% else %}{{ s.$n|markdown|raw }}{% endif %}</div>{% endif %}\n";
-	}
-	if ($dl) {
-		$t .= "\t<dl class=\"spip-champs\">\n";
-		foreach ($dl as $n) {
-			$val = (strpos($n, 'url') !== false)
-				? "<a href=\"{{ s.$n|e('html_attr') }}\">{{ s.$n|e }}</a>"
-				: "{{ s.$n|e }}";
-			$t .= "\t\t{% if s.$n %}<dt>" . sptg_label_champ($n) . "</dt><dd>$val</dd>{% endif %}\n";
+	$bloc_texte = function (array $noms) {
+		$h = array();
+		foreach ($noms as $n) {
+			$h[] = rtrim(sptg_gabarit('objet/champ_texte.twig', array('NOM' => $n)), "\n");
 		}
-		$t .= "\t</dl>\n";
+		return implode("\n", $h);
+	};
+	$liste = '';
+	if ($dl) {
+		$lignes = array();
+		foreach ($dl as $n) {
+			$valeur = sptg_gabarit(strpos($n, 'url') !== false ? 'objet/valeur_url.twig' : 'objet/valeur_texte.twig', array('NOM' => $n));
+			$lignes[] = rtrim(sptg_gabarit('objet/ligne_champ.twig', array(
+				'NOM' => $n, 'LABEL' => sptg_label_champ($n), 'VALEUR' => trim($valeur),
+			)), "\n");
+		}
+		$liste = sptg_gabarit('objet/liste_champs.twig', array('LIGNES' => implode("\n", $lignes)));
 	}
-	$t .= "\t{% include 'partials/documents.html.twig' %}\n";
-	$t .= "\t{% include 'partials/taxonomies.html.twig' %}\n";
-	if ($info['type'] == 'rubrique') {
-		$t .= "\t{% include 'partials/enfants.html.twig' %}\n";
-	}
-	$t .= "</article>\n{% endblock %}\n";
-	return $t;
+	return sptg_gabarit('objet/objet.html.twig', array(
+		'TYPE' => $info['type'],
+		'CHAMPS_TETE' => $bloc_texte($lead),
+		'CHAMPS_QUEUE' => $bloc_texte($tail),
+		'LISTE_CHAMPS' => $liste,
+		'ENFANTS' => $info['type'] == 'rubrique' ? sptg_gabarit('objet/enfants.twig', array()) : '',
+	));
 }
 
 /**
- * Classe PHP du thème : résolveur d'anciennes URL (onPageNotFound), index des identifiants SPIP,
- * fonctions Twig sptg_traductions() et sptg_alternates(). La logique est dans sptg_runtime.php ;
- * ici seul l'accès à Grav (pages, URL, langues).
+ * Génère les fichiers PHP et Twig du socle du thème : chaque gabarits/theme/**\/*.tpl devient le fichier
+ * du même nom sans « .tpl » (« __slug__ » dans un nom de fichier est remplacé par le slug du thème).
  *
- * Plugin::getSubscribedEvents() abonne automatiquement toute méthode publique dont le nom commence par « on ».
+ * Le fichier PHP principal du thème (résolveur d'anciennes URL, index des identifiants SPIP, fonctions Twig
+ * sptg_traductions() et sptg_alternates()) vient de gabarits/theme/__slug__.php.tpl ; la logique est dans
+ * sptg_runtime.php. Plugin::getSubscribedEvents() abonne automatiquement toute méthode publique dont le nom
+ * commence par « on ».
+ *
+ * @return array liste des fichiers écrits (relatifs à $dest)
  */
-function sptg_classe_theme($classe) {
-	return <<<PHP
-<?php
-namespace Grav\Theme;
-
-use Grav\Common\Theme;
-use Grav\Theme\Sptg\Runtime;
-
-require_once __DIR__ . '/sptg_runtime.php';
-
-/** Thème généré par le plugin SPIP « spip_to_grav » */
-class $classe extends Theme
-{
-	/** @var Runtime|null */
-	private \$sptg;
-
-	private function sptgRuntime(): Runtime
-	{
-		if (\$this->sptg) {
-			return \$this->sptg;
+function sptg_generer_socle($dest, $slug, array $vars) {
+	$base = sptg_gabarits_dir() . '/theme';
+	$vars = $vars + array('SLUG' => $slug);
+	$ecrits = array();
+	$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($base, FilesystemIterator::SKIP_DOTS));
+	foreach ($it as $fichier) {
+		$rel = substr($fichier->getPathname(), strlen($base) + 1);
+		if (substr($rel, -4) !== '.tpl') {
+			continue;
 		}
-		\$grav = \$this->grav;
-		\$locator = \$grav['locator'];
-		\$pagesDir = rtrim((string) \$locator->findResource('page://', true), '/');
-		\$dataDir = (string) \$locator->findResource('user://data', true, true);
-
-		\$info = function (\$page) use (\$grav) {
-			\$h = \$page->header();
-			\$type = isset(\$h->spip_type) ? (string) \$h->spip_type : '';
-			\$id = isset(\$h->spip_id) ? (int) \$h->spip_id : 0;
-			if (\$type === '' or \$id <= 0) {
-				return null;
-			}
-			return [
-				'type' => \$type, 'id' => \$id,
-				'lang' => isset(\$h->spip_lang) ? (string) \$h->spip_lang : '',
-				'url' => \$page->url(true), 'title' => (string) \$page->title(),
-			];
-		};
-		\$charger = function (\$dossier) use (\$grav, \$pagesDir, \$info) {
-			\$page = \$grav['pages']->get(\$pagesDir . '/' . \$dossier);
-			return \$page ? \$info(\$page) : null;
-		};
-		\$parcourir = function () use (\$grav, \$pagesDir, \$info) {
-			foreach (\$grav['pages']->all() as \$page) {
-				\$i = \$info(\$page);
-				if (\$i and strpos((string) \$page->path(), \$pagesDir . '/') === 0) {
-					\$i['dossier'] = substr((string) \$page->path(), strlen(\$pagesDir) + 1);
-					yield \$i;
-				}
-			}
-		};
-		\$langues = function (array \$p) use (\$grav, \$pagesDir) {
-			\$out = [];
-			\$page = \$grav['pages']->get(\$pagesDir . '/' . \$p['dossier']);
-			if (\$page) {
-				foreach (\$page->translatedLanguages(true) as \$lang => \$route) {
-					\$out[\$lang] = \$grav['uri']->rootUrl(true) . \$grav['pages']->baseRoute(\$lang) . \$route;
-				}
-			}
-			return \$out;
-		};
-		return \$this->sptg = new Runtime(\$dataDir, \$charger, \$parcourir, \$langues);
+		$rel = str_replace('__slug__', $slug, substr($rel, 0, -4));
+		sptg_ecrire($dest . $rel, sptg_gabarit('theme/' . substr($fichier->getPathname(), strlen($base) + 1, -4), $vars));
+		$ecrits[] = $rel;
 	}
-
-	/** Ancienne URL SPIP (chemin ou spip.php?...) : redirection 301 vers la page actuelle de l'objet */
-	public function onPageNotFound(): void
-	{
-		\$req = (string) (\$_SERVER['REQUEST_URI'] ?? '/');
-		\$chemin = (string) parse_url(\$req, PHP_URL_PATH);
-		\$requete = (string) parse_url(\$req, PHP_URL_QUERY);
-		\$racine = (string) \$this->grav['uri']->rootUrl(false);
-		if (\$racine !== '' and strpos(\$chemin, \$racine) === 0) {
-			\$chemin = substr(\$chemin, strlen(\$racine));
-		}
-		\$p = \$this->sptgRuntime()->pourAncienneUrl(\$chemin, \$requete);
-		if (!\$p) {
-			return;
-		}
-		// pas de boucle : la cible n'est pas la requête elle-même
-		if (\$requete === '' and rtrim((string) parse_url(\$p['url'], PHP_URL_PATH), '/') === rtrim(\$racine . \$chemin, '/')) {
-			return;
-		}
-		\$this->grav->redirect(\$p['url'], 301);
-	}
-
-	public function onTwigExtensions(): void
-	{
-		\$twig = \$this->grav['twig']->twig();
-		\$self = \$this;
-		\$ident = function (\$page) {
-			\$h = \$page ? \$page->header() : null;
-			return [isset(\$h->spip_type) ? (string) \$h->spip_type : '', isset(\$h->spip_id) ? (int) \$h->spip_id : 0,
-				isset(\$h->spip_lang) ? (string) \$h->spip_lang : ''];
-		};
-		\$twig->addFunction(new \\Twig\\TwigFunction('sptg_traductions', function (\$page) use (\$self, \$ident) {
-			list(\$type, \$id, \$lang) = \$ident(\$page);
-			if (\$type === '' or \$id <= 0) {
-				return [];
-			}
-			\$actif = \$self->grav['language']->enabled() ? (string) \$self->grav['language']->getActive() : '';
-			return \$self->sptgRuntime()->traductions(\$type, \$id, \$actif !== '' ? \$actif : \$lang);
-		}));
-		\$twig->addFunction(new \\Twig\\TwigFunction('sptg_alternates', function (\$page) use (\$self, \$ident) {
-			list(\$type, \$id, \$lang) = \$ident(\$page);
-			if (\$type === '' or \$id <= 0) {
-				return '';
-			}
-			\$langue = \$self->grav['language'];
-			\$defaut = \$langue->enabled() ? (string) \$langue->getDefault() : (string) \$self->grav['config']->get('site.lang', '');
-			\$actif = \$langue->enabled() ? (string) \$langue->getActive() : '';
-			return \$self->sptgRuntime()->alternates(\$type, \$id, \$defaut, \$actif !== '' ? \$actif : \$lang);
-		}, ['is_safe' => ['html']]));
-	}
-}
-
-PHP;
+	sort($ecrits);
+	return $ecrits;
 }
 
 function sptg_generer_theme($dest, $slug, array $types, $emails) {
@@ -264,7 +218,11 @@ function sptg_generer_theme($dest, $slug, array $types, $emails) {
 
 	$classe = str_replace(' ', '', ucwords(str_replace('-', ' ', $slug)));
 
-	sptg_ecrire($dest . $slug . '.php', sptg_classe_theme($classe));
+	$langue = isset($GLOBALS['meta']['langue_site']) ? (string) $GLOBALS['meta']['langue_site'] : 'fr';
+	if (!preg_match('/^[a-z]{2,3}([_-][a-zA-Z]{2,4})?$/', $langue)) {
+		$langue = 'fr';
+	}
+	sptg_generer_socle($dest, $slug, array('CLASSE' => $classe, 'LANGUE_SITE' => $langue));
 	sptg_ecrire($dest . $slug . '.yaml', "enabled: true\n");
 	sptg_ecrire($dest . 'blueprints.yaml', sptg_yaml(array(
 		'name' => ucfirst($slug),

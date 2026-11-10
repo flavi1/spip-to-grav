@@ -1,5 +1,6 @@
+{#- Généré par spip_to_grav depuis gabarits/theme/templates/partials/base.html.twig.tpl -#}
 <!DOCTYPE html>
-<html lang="{{ page.header.spip_lang|default(grav.language.enabled ? grav.language.active : site.lang)|default('fr') }}">
+<html lang="{{ page.header.spip_lang|default(grav.language.enabled ? grav.language.active : site.lang)|default('@@LANGUE_SITE@@') }}">
 <head>
 {% block head %}
 	<meta charset="utf-8">

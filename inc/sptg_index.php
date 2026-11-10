@@ -8,7 +8,7 @@
  *
  * `dossier` est le chemin du dossier de la page relatif à user/pages/ ; aucune route n'est stockée :
  * elle est relue dans la page à la demande, donc exacte après un déplacement dans l'admin Grav.
- * Le thème (grav_theme/sptg_runtime.php) lit et répare cet index.
+ * Le thème (gabarits/theme/sptg_runtime.php.tpl) lit et répare cet index.
  */
 if (!defined('_ECRIRE_INC_VERSION')) {
 	return;

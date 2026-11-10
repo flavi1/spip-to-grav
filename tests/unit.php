@@ -3,7 +3,7 @@
 require __DIR__ . '/lib.php';
 require __DIR__ . '/stubs.php';
 include_spip('inc/sptg_export');
-require SPTG_RACINE . 'grav_theme/sptg_runtime.php';
+t_charger_runtime();
 
 use Grav\Theme\Sptg\Runtime;
 
@@ -59,6 +59,37 @@ t_eq(array_map(function ($x) {
 }, $a), array('/r/nouveau.html', '/r/ancien.html~'), 'anciennes : historique arbo reconstruit, dédoublonné');
 $a = sptg_anciennes_urls('article', 10, null, '/r/x', array('ancien'));
 t_eq($a, array(), 'anciennes : sans URL courante pas de reconstruction');
+
+
+// arbo : url avec préfixe de type, id_parent, déplacement d'objet, préfixe de langue
+$hist = array(
+	array('url' => 'article/nouveau', 'id_parent' => 2, 'segments' => 2, 'langue' => '', 'perma' => 0),
+	array('url' => 'article/ancien', 'id_parent' => 2, 'segments' => 2, 'langue' => '', 'perma' => 0),
+	array('url' => 'article/avant-deplacement', 'id_parent' => 7, 'segments' => 2, 'langue' => '', 'perma' => 0),
+	array('url' => 'racine', 'id_parent' => 0, 'segments' => 1, 'langue' => '', 'perma' => 0),
+);
+$parents = array(2 => 'actu/sous', 7 => 'autre');
+$a = sptg_anciennes_urls('article', 10, array('path' => 'actu/sous/article/nouveau.html'), '/actu/sous/article/nouveau', $hist, function ($i) use ($parents) {
+	return $parents[$i] ?? null;
+});
+t_eq(array_map(function ($x) {
+	return $x['chemin'] . ($x['approx'] ? '~' : '');
+}, $a), array('/actu/sous/article/nouveau.html', '/actu/sous/article/ancien.html', '/autre/article/avant-deplacement.html', '/racine.html'), 'arbo : préfixe de type, id_parent, déplacement');
+$a = sptg_anciennes_urls('article', 10, array('path' => 'actu/sous/article/nouveau.html'), '/actu/sous/article/nouveau', $hist);
+t_eq(array_map(function ($x) {
+	return $x['chemin'] . ($x['approx'] ? '~' : '');
+}, $a), array('/actu/sous/article/nouveau.html', '/actu/sous/article/ancien.html~', '/actu/sous/article/avant-deplacement.html~', '/racine.html'), 'arbo : sans parent connu → approximation');
+$a = sptg_anciennes_urls('article', 10, array('path' => 'en/actu/article/new'), '/en/actu/article/new', array(
+	array('url' => 'article/new', 'id_parent' => 1, 'langue' => 'en'),
+	array('url' => 'article/old', 'id_parent' => 1, 'langue' => 'en'),
+	array('url' => 'article/ancien', 'id_parent' => 1, 'langue' => 'fr'),
+), function ($i) {
+	return $i == 1 ? 'actu' : null;
+}, array('fr', 'en'));
+t_eq(array_column($a, 'chemin'), array('/en/actu/article/old', '/fr/actu/article/ancien'), 'arbo multilingue : préfixe de langue par ligne');
+t_eq(sptg_chemin_decouper('fr/a/b.html', array('fr', 'en')), array('.html', 'fr', 'a/b'), 'découpage chemin : langue + terminaison');
+t_eq(sptg_chemin_decouper('a/b/', array('fr')), array('/', '', 'a/b'), 'découpage chemin : rubrique');
+t_eq(sptg_chemin_decouper('fr', array('fr')), array('', '', 'fr'), 'découpage chemin : un seul segment = pas une langue');
 
 sptg_scenario(array('spip_urls' => null));
 t_eq(sptg_urls_historiques('article', 1), array(), 'historique : table absente');
@@ -214,5 +245,73 @@ $p = $rt()->pourAncienneUrl('/spip.php', 'var_mode=calcul&article10');
 t_eq($p['url'] ?? null, '/actu/a', 'legacy : ancienne URL résolue');
 t_eq($rt()->pourAncienneUrl('/spip.php', 'article77'), null, 'legacy : inconnue');
 t_eq($rt()->pourAncienneUrl('/rien', ''), null, 'legacy : chemin inconnu');
+
+// formes toujours acceptées par SPIP (nettoyer_url_page), sans entrée d'index
+$compat = array(
+	array('/article10', '', 10), array('/x/y/article10.html', '', 10), array('/spip.php', 'article10', 10), array('/', 'article10=&var_mode=calcul', 10),
+	array('/article.php3', 'id_article=10', 10), array('/spip.php', 'page=article&id_article=10', 10), array('/spip.php', 'id_article=10&page=article', 10),
+);
+foreach ($compat as $c) {
+	$p = $rt()->pourAncienneUrl($c[0], $c[1]);
+	t_eq($p['id'] ?? null, $c[2], 'compat SPIP : ' . $c[0] . '?' . $c[1]);
+}
+t_eq($rt()->pourAncienneUrl('/article99', ''), null, 'compat SPIP : id inconnu');
+t_eq($rt()->pourAncienneUrl('/mot10', ''), null, 'compat SPIP : type non indexé');
+t_eq($rt()->pourAncienneUrl('/spip.php', 'page=article&id_article=abc'), null, 'compat SPIP : id invalide');
+
+// ---------------------------------------------------------------- gabarits (templates de templates)
+include_spip('inc/sptg_theme');
+t_eq(sptg_gabarit_texte("a @@X@@ b\n\t@@BLOC@@\nfin", array('X' => 'x', 'BLOC' => "l1\nl2\n")), "a x b\nl1\nl2\nfin", 'gabarit : en ligne et bloc');
+t_eq(sptg_gabarit_texte("a\n\t@@BLOC@@\nb", array('BLOC' => '')), "a\nb", 'gabarit : bloc vide → ligne supprimée');
+t_eq(sptg_gabarit_texte('@@A@@', array('A' => '@@B@@', 'B' => 'x')), '@@B@@', 'gabarit : valeurs non ré-interprétées');
+t_eq(sptg_gabarit_restes('un @@RESTE@@ et {{ twig }} et @ seul'), 1, 'gabarit : restes détectés');
+try {
+	sptg_gabarit_texte('@@MANQUE@@', array());
+	t_ok(false, 'gabarit : variable manquante → exception');
+} catch (RuntimeException $e) {
+	t_ok(strpos($e->getMessage(), 'MANQUE') !== false, 'gabarit : variable manquante → exception');
+}
+try {
+	sptg_gabarit('inexistant/x.twig', array());
+	t_ok(false, 'gabarit : introuvable → exception');
+} catch (RuntimeException $e) {
+	t_ok(true, 'gabarit : introuvable → exception');
+}
+
+// le socle complet se génère sans marqueur restant, PHP valide, balises Twig équilibrées
+$dest = t_tmp('socle') . '/';
+$ecrits = sptg_generer_socle($dest, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr'));
+t_ok(in_array('mon-theme.php', $ecrits) and in_array('sptg_runtime.php', $ecrits), 'socle : fichiers PHP générés', implode(' ', $ecrits));
+t_ok(in_array('templates/partials/base.html.twig', $ecrits) and in_array('templates/home.html.twig', $ecrits), 'socle : fichiers Twig générés', implode(' ', $ecrits));
+t_ok(!preg_grep('/\.tpl$|__slug__/', $ecrits), 'socle : ni .tpl ni __slug__ dans les noms');
+foreach ($ecrits as $rel) {
+	$txt = file_get_contents($dest . $rel);
+	t_eq(sptg_gabarit_restes($txt), 0, "socle : pas de marqueur restant dans $rel");
+	if (substr($rel, -4) === '.php') {
+		exec('php -l ' . escapeshellarg($dest . $rel) . ' 2>&1', $o, $code);
+		t_eq($code, 0, "socle : syntaxe PHP de $rel");
+	} else {
+		foreach (array('if', 'for', 'block') as $bal) {
+			$ouvre = preg_match_all('/\{%-?\s*' . $bal . '\b/', $txt);
+			$ferme = preg_match_all('/\{%-?\s*end' . $bal . '\b/', $txt);
+			t_eq($ouvre, $ferme, "socle : {% $bal %} équilibrés dans $rel");
+		}
+	}
+}
+t_ok(strpos(file_get_contents($dest . 'mon-theme.php'), 'class MonTheme extends Theme') !== false, 'socle : classe du thème');
+t_ok(strpos(file_get_contents($dest . 'templates/partials/base.html.twig'), "default('fr')") !== false, 'socle : langue du site dans base.html.twig');
+
+// template par type d'objet
+$info = array('type' => 'article', 'id' => 'id_article', 'col_titre' => 'titre', 'date' => 'date', 'champs' => array(
+	'id_article' => 'bigint', 'titre' => 'text', 'soustitre' => 'text', 'descriptif' => 'text', 'chapo' => 'mediumtext', 'texte' => 'longtext',
+	'ps' => 'mediumtext', 'url_site' => 'text', 'nom_site' => 'tinytext', 'date' => 'datetime', 'statut' => 'varchar(10)', 'id_rubrique' => 'bigint', 'lang' => 'varchar(10)',
+));
+$tw = sptg_twig_objet($info, false);
+t_eq(sptg_gabarit_restes($tw), 0, 'objet : pas de marqueur restant');
+t_ok(strpos($tw, 'spip-article') !== false and strpos($tw, '{{ page.content|raw }}') !== false, 'objet : structure');
+t_ok(strpos($tw, 'partials/enfants.html.twig') === false, 'objet : pas d\'enfants pour un article');
+t_ok(strpos(sptg_twig_objet(array('type' => 'rubrique') + $info, false), 'partials/enfants.html.twig') !== false, 'objet : enfants pour une rubrique');
+t_ok(strpos($tw, 's.soustitre') !== false and strpos($tw, 's.ps') !== false, 'objet : champs texte', $tw);
+t_ok(!preg_match("/\n\n\n/", $tw), 'objet : pas de lignes vides en trop', $tw);
 
 t_fin('unit');

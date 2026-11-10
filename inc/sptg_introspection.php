@@ -80,8 +80,12 @@ function sptg_introspecter($comptes = false) {
 
 		$statut = isset($desc['field']['statut']) ? 'statut' : '';
 		$publie = 'publie';
-		if (!empty($d['statut'][0]['champ'])) {
+		if (!empty($d['statut'][0]['champ']) and is_string($d['statut'][0]['champ'])) {
 			$statut = $d['statut'][0]['champ'];
+		}
+		// valeur « publié » déclarée (ex. 'publie'), quand c'est un mot simple (pas '!5poubelle', ni une liste)
+		if (!empty($d['statut'][0]['publie']) and preg_match('/^\w+$/', $d['statut'][0]['publie'])) {
+			$publie = $d['statut'][0]['publie'];
 		}
 
 		$titre_sql = !empty($d['titre']) ? $d['titre'] : '';

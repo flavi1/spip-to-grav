@@ -92,7 +92,7 @@ t_ok(strpos(file_get_contents("$dest/user/config/system.yaml"), 'redirect_defaul
 
 
 // ------------------------------------------------ 2b. le runtime du thème relit l'export du scénario 2
-require SPTG_RACINE . 'grav_theme/sptg_runtime.php';
+t_charger_runtime();
 list($r2, $d2) = lancer('spip-rt', array('schema_urls' => 'spip'));
 $charger = function ($dossier) use ($d2) {
 	foreach (glob("$d2/user/pages/$dossier/*.md") as $f) {

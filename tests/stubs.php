@@ -136,11 +136,10 @@ function sous_repertoire($d, $n) {
 	return $d . $n . '/';
 }
 function generer_objet_url($id, $type, $args = '', $ancre = '', $public = null) {
+	// comme SPIP : le résultat est préfixé par _DIR_RACINE, « ../ » dans l'espace privé (où tourne l'export)
 	$f = $GLOBALS['SC']['url'] ?? null;
-	if ($f) {
-		return $f($id, $type);
-	}
-	return $type == 'rubrique' ? "spip.php?rubrique$id" : "spip.php?$type$id";
+	$u = $f ? $f($id, $type) : ($type == 'rubrique' ? "spip.php?rubrique$id" : "spip.php?$type$id");
+	return '../' . $u;
 }
 function calculer_notes() {
 	return '';

@@ -174,7 +174,8 @@ function sptg_url_spip($type, $id) {
 	}
 	$u = preg_replace('~#.*$~', '', $u);
 	$u = preg_replace('~^https?://[^/]+/?~i', '', $u);
-	$u = ltrim(preg_replace('~^(\./)+~', '', $u), '/');
+	// generer_objet_url() préfixe _DIR_RACINE : « ../ » dans l'espace privé, « ./ » pour les URL de type page
+	$u = ltrim(preg_replace('~^(\.{1,2}/)+~', '', $u), '/');
 	if ($u === '') {
 		return null;
 	}
@@ -713,11 +714,21 @@ function sptg_exporter(array $o) {
 	$moteur = $o['redirections'] == 'aucune' ? 'aucune' : ($o['generer_theme'] ? 'resolveur' : 'site');
 	$rapport['moteur_redirections'] = $moteur;
 	if ($moteur != 'aucune') {
+		// chemin SPIP actuel (sans langue ni terminaison) des rubriques : parents des anciennes URL arborescentes
+		$chemins_rub = array();
+		foreach ($items as $it) {
+			if ($it['info']['type'] == 'rubrique' and $it['old'] and isset($it['old']['path'])) {
+				$chemins_rub[(int) $it['row']['id_rubrique']] = sptg_chemin_decouper($it['old']['path'], $cl['langues'])[2];
+			}
+		}
+		$chemin_parent = function ($id_parent) use ($chemins_rub) {
+			return $chemins_rub[$id_parent] ?? null;
+		};
 		foreach ($items as $it) {
 			$type = $it['info']['type'];
 			$id = (int) $it['row'][$it['info']['id']];
 			$hist = $o['urls_spip'] ? sptg_urls_historiques($type, $id) : array();
-			foreach (sptg_anciennes_urls($type, $id, $it['old'], $it['pub'], $hist) as $a) {
+			foreach (sptg_anciennes_urls($type, $id, $it['old'], $it['pub'], $hist, $chemin_parent, $cl['langues']) as $a) {
 				if ($a['approx']) {
 					$rapport['approx']++;
 				}

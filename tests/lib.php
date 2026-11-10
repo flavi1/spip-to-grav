@@ -30,3 +30,11 @@ function t_tmp($nom = 'x') {
 function t_json($f) {
 	return is_file($f) ? json_decode(file_get_contents($f), true) : null;
 }
+
+/** Rend gabarits/theme/sptg_runtime.php.tpl dans un fichier temporaire et le charge (le runtime n'existe plus en clair). */
+function t_charger_runtime() {
+	include_spip('inc/sptg_theme');
+	$f = t_tmp('runtime-php') . '/sptg_runtime.php';
+	file_put_contents($f, sptg_gabarit('theme/sptg_runtime.php', array()));
+	require $f;
+}

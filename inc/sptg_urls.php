@@ -22,7 +22,7 @@ function sptg_schemas_urls() {
 
 /**
  * Clé de recherche d'une ancienne URL (chemin + requête), identique côté thème
- * (grav_theme/sptg_runtime.php : Sptg\Runtime::cleLegacy). Tout changement ici doit être répercuté là-bas ;
+ * (gabarits/theme/sptg_runtime.php.tpl : Sptg\Runtime::cleLegacy). Tout changement ici doit être répercuté là-bas ;
  * tests/run.php vérifie que les deux implémentations donnent le même résultat.
  *
  * Règles : chemin décodé, sans « ./ », sans slash final (sauf la racine), en minuscules ;
@@ -108,15 +108,45 @@ function sptg_route_publique($schema, $type, $slug, $route_dossier, $route_paren
 }
 
 /**
+ * Décompose le chemin d'une URL SPIP de type chemin : [terminaison, langue, base].
+ *
+ * - terminaison : « .html », « / »… (non stockée dans spip_urls) ;
+ * - langue : premier segment quand il est un code de langue (_url_arbo_multilang = true) ;
+ * - base : le reste, sans terminaison.
+ */
+function sptg_chemin_decouper($chemin, array $langues = array()) {
+	$chemin = trim((string) $chemin);
+	$t = '';
+	if (preg_match('~(\.[a-z0-9]{2,5}|/)$~i', $chemin, $m)) {
+		$t = $m[1];
+		$chemin = substr($chemin, 0, -strlen($t));
+	}
+	$chemin = trim($chemin, '/');
+	$lang = '';
+	$segs = explode('/', $chemin);
+	if (count($segs) > 1 and in_array($segs[0], $langues, true)) {
+		$lang = array_shift($segs);
+	}
+	return array($t, $lang, implode('/', $segs));
+}
+
+/**
  * Anciennes URL d'un objet : l'URL « actuelle » SPIP si elle diffère de la nouvelle route,
  * puis les URL historiques de spip_urls (gestion avancée des URL : anciennes URL conservées).
  *
- * Pour les URL arborescentes, spip_urls ne stocke que le dernier segment : l'ancien chemin est
- * reconstitué avec les parents actuels. C'est une approximation, signalée dans le rapport.
+ * Dans spip_urls (plugin urls_etendues), une ligne = (id_parent, url, langue, segments…) :
+ * `url` peut contenir un préfixe de type (« article/titre », segments = 2), `id_parent` est le
+ * parent dans la hiérarchie des URL (0 = racine). Le chemin d'une ancienne URL est donc
+ * « chemin du parent + url + terminaison » ; le chemin du parent est fourni par $chemin_parent
+ * (callable id_parent => base du chemin SPIP actuel du parent, ou null si inconnu). Sans lui,
+ * le préfixe est déduit du chemin actuel de l'objet, et l'URL est comptée comme approximative.
  *
+ * @param array         $historiques   lignes de spip_urls (ou simples chaînes « url »)
+ * @param callable|null $chemin_parent id_parent => base du chemin du parent ou null
+ * @param array         $langues       langues du site (pour reconnaître le préfixe de langue)
  * @return array liste de ['chemin' => ..., 'requete' => ..., 'approx' => bool]
  */
-function sptg_anciennes_urls($type, $id, $url_spip, $route_publique, array $historiques = array()) {
+function sptg_anciennes_urls($type, $id, $url_spip, $route_publique, array $historiques = array(), $chemin_parent = null, array $langues = array()) {
 	$out = array();
 	$vus = array();
 	$ajout = function ($chemin, $requete, $approx) use (&$out, &$vus, $route_publique) {
@@ -138,41 +168,76 @@ function sptg_anciennes_urls($type, $id, $url_spip, $route_publique, array $hist
 			$ajout($c, $q, false);
 		}
 	}
-	$courant = ($url_spip and isset($url_spip['path'])) ? $url_spip['path'] : '';
-	foreach ($historiques as $seg) {
-		$seg = trim((string) $seg);
-		if ($seg === '' or $courant === '') {
-			continue;
+	if (!$url_spip or !isset($url_spip['path'])) {
+		return $out;
+	}
+	list($terminaison, $lang_courante, $base) = sptg_chemin_decouper($url_spip['path'], $langues);
+
+	$rows = array();
+	foreach ($historiques as $h) {
+		$h = is_array($h) ? $h : array('url' => $h);
+		$u = trim((string) ($h['url'] ?? ''), "/ \t");
+		if ($u !== '') {
+			$h['url'] = $u;
+			$rows[] = $h;
 		}
-		$dir = strpos($courant, '/') !== false ? substr($courant, 0, strrpos($courant, '/') + 1) : '';
-		$ext = preg_match('/(\.[a-z0-9]{2,5})$/i', $courant, $m) ? $m[1] : '';
-		$ancien = $dir . $seg . (substr($seg, -strlen($ext)) === $ext ? '' : $ext);
-		$ajout($ancien, '', true);
+	}
+	// ligne de l'URL actuelle : celle dont l'url termine la base actuelle (la plus longue)
+	$prefixe_courant = null;
+	$meilleure = -1;
+	foreach ($rows as $h) {
+		$u = $h['url'];
+		if (($base === $u or substr($base, -strlen($u) - 1) === '/' . $u) and strlen($u) > $meilleure) {
+			$meilleure = strlen($u);
+			$prefixe_courant = substr($base, 0, strlen($base) - strlen($u));
+		}
+	}
+	if ($prefixe_courant === null) {
+		$prefixe_courant = strpos($base, '/') !== false ? substr($base, 0, strrpos($base, '/') + 1) : '';
+	}
+
+	foreach ($rows as $h) {
+		$prefixe = $prefixe_courant;
+		$approx = true;
+		if (isset($h['id_parent']) and (int) $h['id_parent'] === 0) {
+			$prefixe = '';
+			$approx = false;
+		} elseif (isset($h['id_parent']) and $chemin_parent) {
+			$pp = call_user_func($chemin_parent, (int) $h['id_parent']);
+			if ($pp !== null and $pp !== '') {
+				$prefixe = rtrim($pp, '/') . '/';
+				$approx = false;
+			}
+		}
+		$l = '';
+		if ($lang_courante !== '') {
+			$l = (isset($h['langue']) and $h['langue'] !== '') ? $h['langue'] : $lang_courante;
+			$l .= '/';
+		}
+		$ajout($l . $prefixe . $h['url'] . $terminaison, '', $approx);
 	}
 	return $out;
 }
 
 /**
- * Lit les segments d'URL (principale et historiques) d'un objet dans spip_urls.
- * Retourne array() si la table n'existe pas ou si ses colonnes ne sont pas celles attendues.
+ * Lit les lignes d'URL (principale et historiques) d'un objet dans spip_urls.
+ * Retourne array() si la table n'existe pas ou si ses colonnes ne sont pas celles attendues
+ * (spip_urls : id_parent, url, type, id_objet, date, segments, perma, langue — plugin urls_etendues).
+ *
+ * @return array lignes ['url', 'id_parent', 'segments', 'langue', 'perma'] (colonnes présentes)
  */
 function sptg_urls_historiques($type, $id) {
-	// sql_showtable() met déjà ses résultats en cache côté SPIP
-	$table_ok = false;
+	$champs = array();
 	if (function_exists('sql_showtable')) {
 		$d = sql_showtable('spip_urls', true);
-		$table_ok = is_array($d) and isset($d['field']['url'], $d['field']['id_objet'], $d['field']['type']);
-		$table_ok = (bool) $table_ok;
+		if (is_array($d) and isset($d['field']['url'], $d['field']['id_objet'], $d['field']['type'])) {
+			$champs = array_values(array_intersect(array('url', 'id_parent', 'segments', 'langue', 'perma', 'date'), array_keys($d['field'])));
+		}
 	}
-	if (!$table_ok) {
+	if (!$champs) {
 		return array();
 	}
 	// Toutes les lignes : l'URL principale (celle qui a priorité : perma puis date récente) est
 	// l'URL actuelle, déjà connue ; sptg_anciennes_urls() dédoublonne.
-	$rows = sql_allfetsel('url', 'spip_urls', 'type=' . sql_quote($type) . ' AND id_objet=' . (int) $id) ?: array();
-	$out = array();
-	foreach ($rows as $r) {
-		$out[] = $r['url'];
-	}
-	return $out;
+	return sql_allfetsel(implode(',', $champs), 'spip_urls', 'type=' . sql_quote($type) . ' AND id_objet=' . (int) $id) ?: array();
 }

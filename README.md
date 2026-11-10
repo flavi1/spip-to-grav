@@ -60,13 +60,21 @@ Chaque page porte `spip_id`, `spip_type`, `spip_lang` (et `spip_trad`) dans son 
 
 - `<type>/<id>.json` : un fichier par objet (`type`, `id`, `lang`, `trad` = `{langue: id}`, `dossier`, `langues` pour les `<multi>`).
 - Auto-réparation (thème) : si l'entrée pointe vers un dossier absent ou vers une page d'un autre (type, id), le thème retrouve la page par parcours, réécrit l'entrée et déplace l'ancienne dans `_legacy/<type>/<id>.json`.
-- `_legacy/urls/<sha1>.json` : anciennes URL SPIP (URL courante, historique `spip_urls`, URL à paramètres comme `spip.php?article12`) → (type, id). Le thème les résout dans `onPageNotFound` et redirige en 301 vers la page actuelle. Sans thème, les chemins (sans paramètres) deviennent des `redirects` de `site.yaml`. Les chemins reconstitués d'après l'historique des URL arborescentes sont approximatifs et comptés dans le rapport.
+- `_legacy/urls/<sha1>.json` : anciennes URL SPIP (URL courante, historique `spip_urls`, URL à paramètres comme `spip.php?article12`) → (type, id). Le thème les résout dans `onPageNotFound` et redirige en 301 vers la page actuelle. Sans thème, les chemins (sans paramètres) deviennent des `redirects` de `site.yaml`. Les formes que SPIP accepte toujours, quel que soit son jeu d'URL (`/article12`, `/article12.html`, `spip.php?article12`, `article.php3?id_article=12`, `spip.php?page=article&id_article=12`), sont reconnues par le thème sans entrée d'index. L'historique de `spip_urls` (plugin urls_etendues : `id_parent`, `url`, `segments`, `langue`) est converti en chemins : parent actuel + ancienne `url` + terminaison (`.html`, `/`), avec préfixe de langue si le site utilise `_url_arbo_multilang`. Quand le parent d'une ancienne URL n'est pas retrouvé, le chemin est approximatif et compté dans le rapport.
 
 ## Langues
 
 - Objets avec traductions SPIP (`id_trad`) : un dossier par objet, avec sa route exacte ; l'index liste les traductions ; le thème injecte `<link rel="alternate" hreflang>` (+ `x-default`) et fournit un sélecteur de langue (fonctions Twig `sptg_traductions(page)` et `sptg_alternates(page)`).
 - Blocs `<multi>` : un fichier `<type>.<lang>.md` par langue, avec la config `languages` de Grav (`include_default_lang: false`, `content_fallback` vers la langue par défaut, comme le repli de `<multi>`). Limite : Grav préfixe toujours les routes des langues non par défaut.
 - Les titres et textes sont rendus avec `extraire_multi` dans la langue de la page.
+
+## Gabarits (templates de templates)
+
+Aucun fichier PHP ni Twig du thème n'est écrit à la main dans le code : tous sont générés depuis `gabarits/` (fichiers `.tpl`, marqueurs `@@NOM@@`).
+
+- `gabarits/theme/**` : socle du thème (classe PHP `__slug__.php.tpl`, `sptg_runtime.php.tpl`, templates et partials Twig). Chaque `.tpl` devient le fichier du même nom ; `__slug__` est remplacé par le slug du thème.
+- `gabarits/objet/*` : fragments du template Twig propre à chaque type d'objet (champs texte, liste de champs, rubriques → liste des enfants), assemblés d'après la structure SQL.
+- Le moteur (`sptg_gabarit()`, `inc/sptg_theme.php`) refuse tout marqueur sans valeur ; les tests vérifient qu'aucun marqueur ne reste, que le PHP généré est valide et que les blocs Twig sont équilibrés. Les blueprints (`.yaml`) restent générés par `sptg_yaml()` ; `grav_theme/` ne contient plus que du CSS et des blueprints fixes.
 
 ## Contenu des pages
 
