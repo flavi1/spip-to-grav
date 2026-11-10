@@ -20,7 +20,13 @@ Copier ce dépôt dans `plugins/spip_to_grav/` (ou `plugins-dist/`), activer le 
 
 ## Sélection de l'export (cases à cocher)
 
-types d'objets (noyau **et** plugins : brèves, lexique… détectés via `lister_tables_objets_sql()`), mots-clés (taxonomies), documents, secteurs, statuts, puis options (Markdown, vérification, URL SPIP, documents dans les pages, IMG conservé, source SPIP, emails, thème, zip).
+types d'objets (noyau **et** plugins : brèves, lexique… détectés via `lister_tables_objets_sql()`), mots-clés (taxonomies), documents, secteurs, statuts, puis options (Markdown, vérification, URL SPIP, stockage des images, source SPIP, emails, thème, zip).
+
+## Stockage des images (au choix)
+
+- **Dossier partagé** (défaut) : chaque image est copiée une seule fois dans `user/pages/images/` (sous-dossiers de SPIP conservés) et référencée `![alt](/images/jpg/photo.jpg)`. Le slug `images` est réservé à ce dossier.
+- **IMG conservé** : le dossier IMG (et `local/cache-vignettes`) est copié tel quel, références `![alt](/IMG/jpg/photo.jpg)`.
+- Les autres documents joints (PDF, etc.) vont toujours dans le dossier de leur page (`local` dans l'entête, média Grav).
 
 ## Chemins d'abord, conversion ensuite
 
@@ -30,7 +36,7 @@ Toutes les routes Grav (`rubrique/sous-rubrique/mon-article`) sont calculées **
 
 Le HTML de `propre()` (donc exactement ce que montre le site) est converti en Markdown par `inc/sptg_markdown.php`. Principe : on ne convertit que ce qui se traduit **exactement** (titres `###`, paragraphes, `<br />`, listes, citations, code, `**gras**`, `*italique*`, liens, images) ; tout le reste (tableaux, `<div>`, `<span class>`, notes, ancres…) reste en HTML brut, que Markdown laisse passer. Les classes SPIP (`spip`, `spip_in`, `spip_out`…) sont ignorées à la comparaison.
 
-Modèles `<imgN>`, `<docN>`, `<embN>` : le fichier est copié dans le dossier de la page (média Grav) et référencé par son nom (`![titre](photo.jpg)`). L'alignement (`|left`) n'est pas conservé.
+Modèles `<imgN>`, `<docN>`, `<embN>` : images selon le mode de stockage choisi, autres documents en lien vers le fichier du dossier de la page. L'alignement (`|left`) n'est pas conservé.
 
 ## Vérification et tests unitaires
 
@@ -40,7 +46,7 @@ Pour améliorer le convertisseur : coller un échantillon du rapport dans `tests
 
 ## URL et redirections
 
-Les anciennes URL SPIP qui sont des chemins (URLs propres, arborescentes, `.html`) génèrent des `redirects` Grav. Les URL à paramètres (`spip.php?page=article&id_article=12`) ne peuvent pas être redirigées par Grav : elles sont comptées dans le rapport.
+Les anciennes URL SPIP qui sont des chemins (URLs propres, arborescentes, `.html`) génèrent des `redirects` Grav. Si le site génère des URL à paramètres (`spip.php?page=article&id_article=12`), Grav ne peut pas les rediriger : le formulaire le détecte et demande de configurer d'abord des URL propres ou arborescentes (Configuration → Gestion des URL), ou de décocher l'option.
 
 ## Contenu des pages
 

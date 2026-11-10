@@ -171,6 +171,20 @@ function sptg_url_spip($type, $id) {
 	return strpos($u, '?') !== false ? array('query' => $u) : array('path' => $u);
 }
 
+/** Le site génère-t-il des URL à paramètres (spip.php?...) ? Test sur une rubrique (ou un article) publiée. */
+function sptg_urls_a_parametres() {
+	$u = null;
+	$r = sql_fetsel('id_rubrique', 'spip_rubriques', "statut='publie'", '', 'id_rubrique', '0,1');
+	if ($r) {
+		$u = sptg_url_spip('rubrique', (int) $r['id_rubrique']);
+	}
+	if (!$u) {
+		$a = sql_fetsel('id_article', 'spip_articles', "statut='publie'", '', 'id_article', '0,1');
+		$u = $a ? sptg_url_spip('article', (int) $a['id_article']) : null;
+	}
+	return (bool) ($u and isset($u['query']));
+}
+
 /** Remplace les liens internes SPIP ([->art12]) par la route Grav correspondante */
 function sptg_liens_internes($texte, array $routes) {
 	$alias = array(
@@ -208,12 +222,37 @@ function sptg_est_image($ext) {
 }
 
 /**
- * Référence utilisable dans le contenu pour un fichier : nom local (copié dans le dossier de la page)
- * ou chemin absolu public.
+ * Référence utilisable dans le contenu pour un fichier du site.
+ *
+ *  - image, mode « partage » : copiée une seule fois dans user/pages/images/, référence /images/<chemin>
+ *  - image, mode « img »     : laissée dans IMG/, référence /IMG/<chemin> (le dossier est copié à la fin)
+ *  - autre document          : copié dans le dossier de la page, référence = nom du fichier
+ *
+ * @param string $abs chemin du fichier sur le disque
+ * @param string $rel chemin relatif à la racine du site (IMG/jpg/x.jpg, local/cache-vignettes/…)
  */
-function sptg_fichier_ref(array &$ctx, $abs, $public) {
-	if (empty($ctx['copier']) or !is_file($abs)) {
-		return $public;
+function sptg_fichier_ref(array &$ctx, $abs, $rel) {
+	$rel = ltrim($rel, '/');
+	if (sptg_est_image(pathinfo($rel, PATHINFO_EXTENSION))) {
+		if ($ctx['mode_images'] == 'img') {
+			return '/' . $rel;
+		}
+		$sous = preg_replace('~^(IMG|local)/~', '', $rel);
+		if (!is_file($abs)) {
+			$ctx['stats']['fichiers_absents']++;
+			return '/images/' . $sous;
+		}
+		if (!isset($ctx['partage_vus'][$sous])) {
+			sptg_mkdir(dirname($ctx['partage_dir'] . $sous));
+			copy($abs, $ctx['partage_dir'] . $sous);
+			$ctx['partage_vus'][$sous] = 1;
+			$ctx['stats']['images_partagees']++;
+		}
+		return '/images/' . $sous;
+	}
+	if (!is_file($abs)) {
+		$ctx['stats']['fichiers_absents']++;
+		return '/' . $rel;
 	}
 	$nom = basename($abs);
 	if (isset($ctx['noms'][$nom]) and $ctx['noms'][$nom] !== $abs) {
@@ -307,7 +346,7 @@ function sptg_rendre_texte($raw, array &$ctx, $champ) {
 			if ($d['distant'] == 'oui') {
 				$ref = $d['fichier'];
 			} else {
-				$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], '/IMG/' . $d['fichier']);
+				$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], 'IMG/' . $d['fichier']);
 			}
 			$image = sptg_est_image($d['extension']);
 			if ($image) {
@@ -324,7 +363,7 @@ function sptg_rendre_texte($raw, array &$ctx, $champ) {
 		'~\b(src|href)=(["\'])(?:\./)?((?:IMG|local)/[^"\']+)\2~i',
 		function ($m) use (&$ctx) {
 			$rel = html_entity_decode($m[3]);
-			$ref = sptg_fichier_ref($ctx, _DIR_RACINE . $rel, '/' . $rel);
+			$ref = sptg_fichier_ref($ctx, _DIR_RACINE . $rel, $rel);
 			return $m[1] . '=' . $m[2] . htmlspecialchars($ref, ENT_QUOTES) . $m[2];
 		},
 		$html
@@ -371,7 +410,7 @@ function sptg_exporter(array $o) {
 		'export_name' => 'spip2grav', 'dossier_destination' => '/tmp/grav', 'vider' => false,
 		'objets' => array(), 'secteurs' => array(), 'statuts' => array('publie'),
 		'generer_theme' => true, 'nom_theme' => '', 'markdown' => true, 'verifier' => true,
-		'creer_zip' => false, 'copier_documents' => true, 'conserver_img' => false,
+		'creer_zip' => false, 'mode_images' => 'partage',
 		'conserver_source' => false, 'inclure_emails' => false, 'urls_spip' => true,
 	);
 	$export_name = $o['export_name'];
@@ -403,12 +442,15 @@ function sptg_exporter(array $o) {
 	$rapport = array(
 		'pages' => 0, 'ignores' => 0, 'details' => array(), 'ecarts' => array(), 'liens_bruts' => array(),
 		'racine' => $racine, 'est_install' => $est_install, 'theme' => $o['generer_theme'] ? $slug_theme : '',
-		'stats' => array('fichiers' => 0, 'modeles_orphelins' => 0),
+		'stats' => array('fichiers' => 0, 'images_partagees' => 0, 'fichiers_absents' => 0, 'modeles_orphelins' => 0),
 		'redirections' => 0, 'non_redirigeables' => 0, 'fmt_html' => 0,
 	);
 	$items = array();
 	$routes = array();
 	$noms = array();
+	if ($o['mode_images'] == 'partage') {
+		$noms[''] = array('images' => 1); // user/pages/images/ est réservé aux images partagées
+	}
 	$collections = array();
 	$rub_chemin = array();
 	$redirects = array();
@@ -577,6 +619,7 @@ function sptg_exporter(array $o) {
 
 	// ---- 4/5. Rendu et écriture des pages
 	$compte = array();
+	$partage_vus = array();
 	foreach ($items as $it) {
 		$info = $it['info'];
 		$type = $info['type'];
@@ -587,7 +630,7 @@ function sptg_exporter(array $o) {
 
 		$ctx = array(
 			'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
-			'copier' => (bool) $o['copier_documents'],
+			'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 			'dirabs' => $dirabs, 'route' => $it['route'], 'noms' => array(),
 			'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
 		);
@@ -612,12 +655,10 @@ function sptg_exporter(array $o) {
 				if ($d['distant'] == 'oui') {
 					$fiche['url'] = $d['fichier'];
 				} else {
-					$fiche['url'] = '/IMG/' . $d['fichier'];
-					if ($o['copier_documents']) {
-						$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], '/IMG/' . $d['fichier']);
-						if (strpos($ref, '/') !== 0) {
-							$fiche['local'] = $ref;
-						}
+					$ref = sptg_fichier_ref($ctx, _DIR_IMG . $d['fichier'], 'IMG/' . $d['fichier']);
+					$fiche['url'] = $ref;
+					if (strpos($ref, '/') !== 0) {
+						$fiche['local'] = $ref; // document non image : dossier de la page
 					}
 				}
 				$docs[] = array_filter($fiche, function ($v) {
@@ -626,18 +667,11 @@ function sptg_exporter(array $o) {
 			}
 		}
 
-		// logo
+		// logo (image : dossier partagé ou IMG selon le mode)
 		$logo = array();
 		$g = glob(_DIR_IMG . sptg_prefixe_logo($type) . $id . '.*');
 		if ($g) {
-			$lf = basename($g[0]);
-			$logo['logo_url'] = '/IMG/' . $lf;
-			if ($o['copier_documents']) {
-				$ref = sptg_fichier_ref($ctx, $g[0], '/IMG/' . $lf);
-				if (strpos($ref, '/') !== 0) {
-					$logo['logo'] = $ref;
-				}
-			}
+			$logo['logo_url'] = sptg_fichier_ref($ctx, $g[0], 'IMG/' . basename($g[0]));
 		}
 
 		// champs
@@ -738,7 +772,8 @@ function sptg_exporter(array $o) {
 	$nom_site = isset($GLOBALS['meta']['nom_site']) ? $GLOBALS['meta']['nom_site'] : 'Site SPIP';
 	$desc_site = isset($GLOBALS['meta']['descriptif_site']) ? $GLOBALS['meta']['descriptif_site'] : '';
 	$ctx = array(
-		'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'], 'copier' => false,
+		'routes' => &$routes, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+		'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 		'dirabs' => $pages . '01.home/', 'route' => '/home', 'noms' => array(),
 		'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
 	);
@@ -793,7 +828,7 @@ function sptg_exporter(array $o) {
 	if ($o['generer_theme']) {
 		$sous_dossiers[] = 'user/themes/' . $slug_theme;
 	}
-	if ($o['conserver_img']) {
+	if ($o['mode_images'] == 'img') {
 		$n = sptg_copier_arbre(rtrim(_DIR_IMG, '/'), $racine . 'IMG');
 		$n += sptg_copier_arbre(_DIR_VAR . 'cache-vignettes', $racine . 'local/cache-vignettes');
 		$rapport['details'][] = "IMG : $n fichier(s)";
@@ -836,7 +871,9 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	$t .= "- Destination : `" . $r['racine'] . "`" . ($r['est_install'] ? " (installation Grav détectée)" : '') . "\n";
 	$t .= "- Pages : " . $r['pages'] . " (dont " . $r['fmt_html'] . " corps conservés en HTML)\n";
 	$t .= "- Objets ignorés (rubrique non exportée) : " . $r['ignores'] . "\n";
-	$t .= "- Fichiers copiés dans les pages : " . $r['stats']['fichiers'] . "\n";
+	$t .= "- Images partagées copiées dans user/pages/images : " . $r['stats']['images_partagees'] . "\n";
+	$t .= "- Documents copiés dans les dossiers de pages : " . $r['stats']['fichiers'] . "\n";
+	$t .= "- Fichiers référencés mais absents du disque : " . $r['stats']['fichiers_absents'] . "\n";
 	$t .= "- Modèles d'image/document introuvables : " . $r['stats']['modeles_orphelins'] . "\n";
 	$t .= "- Redirections générées : " . $r['redirections'] . " ; anciennes URL à paramètres (non redirigeables) : " . $r['non_redirigeables'] . "\n";
 	foreach ($r['details'] as $d) {

@@ -34,6 +34,7 @@ function formulaires_exporter_grav_charger_dist() {
 		'_objets' => $objets,
 		'_secteurs' => $secteurs,
 		'_statuts' => $statuts,
+		'_urls_params' => sptg_urls_a_parametres(),
 		'_detection' => sptg_chemin_valide($dest) ? sptg_detecter_grav($dest) : false,
 		'objets' => array_keys($objets),
 		'secteurs' => array_keys($secteurs),
@@ -46,8 +47,7 @@ function formulaires_exporter_grav_charger_dist() {
 		'markdown' => 'oui',
 		'verifier' => 'oui',
 		'urls_spip' => 'oui',
-		'copier_documents' => 'oui',
-		'conserver_img' => '',
+		'mode_images' => 'partage',
 		'conserver_source' => '',
 		'inclure_emails' => '',
 		'creer_zip' => '',
@@ -67,6 +67,13 @@ function formulaires_exporter_grav_verifier_dist() {
 	}
 	if (!_request('statuts')) {
 		$erreurs['statuts'] = _T('sptg:erreur_aucun_statut');
+	}
+
+	if (_request('urls_spip') == 'oui' and sptg_urls_a_parametres()) {
+		$erreurs['urls_spip'] = _T('sptg:erreur_urls_params');
+	}
+	if (!in_array(_request('mode_images'), array('partage', 'img'))) {
+		$erreurs['mode_images'] = _T('sptg:erreur_slug');
 	}
 
 	$name = (string) _request('export_name');
@@ -123,8 +130,7 @@ function formulaires_exporter_grav_traiter_dist() {
 		'markdown' => _request('markdown') == 'oui',
 		'verifier' => _request('verifier') == 'oui',
 		'urls_spip' => _request('urls_spip') == 'oui',
-		'copier_documents' => _request('copier_documents') == 'oui',
-		'conserver_img' => _request('conserver_img') == 'oui',
+		'mode_images' => _request('mode_images') == 'img' ? 'img' : 'partage',
 		'conserver_source' => _request('conserver_source') == 'oui',
 		'inclure_emails' => _request('inclure_emails') == 'oui',
 		'creer_zip' => _request('creer_zip') == 'oui',

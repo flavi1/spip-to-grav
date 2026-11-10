@@ -79,17 +79,23 @@
 					<input type="checkbox" name="verifier" id="opt_verif" value="oui"[(#ENV{verifier}|=={oui}|?{' checked="checked"'})] />
 					<label for="opt_verif"><:sptg:option_verifier:></label>
 				</li>
-				<li class="editer choix">
+				<li class="editer choix[ (#ENV**{erreurs/urls_spip}|oui)erreur]">
+					[<span class="erreur_message">(#ENV**{erreurs/urls_spip})</span>]
+					[<p class="notice">(#ENV{_urls_params}|?{<:sptg:alerte_urls:>})</p>]
 					<input type="checkbox" name="urls_spip" id="opt_urls" value="oui"[(#ENV{urls_spip}|=={oui}|?{' checked="checked"'})] />
 					<label for="opt_urls"><:sptg:option_urls_spip:></label>
 				</li>
-				<li class="editer choix">
-					<input type="checkbox" name="copier_documents" id="opt_docs" value="oui"[(#ENV{copier_documents}|=={oui}|?{' checked="checked"'})] />
-					<label for="opt_docs"><:sptg:option_copier_documents:></label>
-				</li>
-				<li class="editer choix">
-					<input type="checkbox" name="conserver_img" id="opt_img" value="oui"[(#ENV{conserver_img}|=={oui}|?{' checked="checked"'})] />
-					<label for="opt_img"><:sptg:option_conserver_img:></label>
+				<li class="editer editer_mode_images">
+					<label><:sptg:label_mode_images:></label>
+					<p class="explication"><:sptg:aide_mode_images:></p>
+					<div class="choix">
+						<input type="radio" name="mode_images" id="mode_partage" value="partage"[(#ENV{mode_images}|=={img}|?{'',' checked="checked"'})] />
+						<label for="mode_partage"><:sptg:mode_partage:></label>
+					</div>
+					<div class="choix">
+						<input type="radio" name="mode_images" id="mode_img" value="img"[(#ENV{mode_images}|=={img}|?{' checked="checked"'})] />
+						<label for="mode_img"><:sptg:mode_img:></label>
+					</div>
 				</li>
 				<li class="editer choix">
 					<input type="checkbox" name="conserver_source" id="opt_src" value="oui"[(#ENV{conserver_source}|=={oui}|?{' checked="checked"'})] />
