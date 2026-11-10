@@ -98,7 +98,7 @@ t_ok(strpos(sptg_rapport_texte($r, array('export_name' => 'demo'), ''), 'non act
 
 // thème réutilisé qui comporte déjà les helpers (généré une première fois, puis contenu seul)
 $d2 = t_tmp('stables-reuse');
-sptg_generer_socle("$d2/user/themes/demo-theme/", 'demo-theme', array('CLASSE' => 'DemoTheme', 'LANGUE_SITE' => 'fr'));
+sptg_generer_socle("$d2/user/themes/demo-theme/", 'demo-theme', array('CLASSE' => 'DemoTheme', 'LANGUE_SITE' => 'fr', 'BUILD' => 'test'));
 $ouvert = sptg_exporter(array(
 	'export_name' => 'demo', 'dossier_destination' => $d2, 'vider' => true, 'objets' => array('article', 'rubrique'), 'secteurs' => array(1, 2, 3),
 	'statuts' => array('publie'), 'creer_zip' => false, 'schema_urls' => 'hierarchique', 'liens_stables' => true, 'generer_theme' => false,

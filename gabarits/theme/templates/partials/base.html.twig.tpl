@@ -4,6 +4,7 @@
 <head>
 {% block head %}
 	<meta charset="utf-8">
+	<meta name="generator" content="@@BUILD@@">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>{% if not page.home %}{{ page.title|e }} | {% endif %}{{ site.title|e }}</title>
 	{% if site.metadata.description %}<meta name="description" content="{{ site.metadata.description|e('html_attr') }}">{% endif %}

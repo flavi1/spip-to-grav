@@ -280,7 +280,7 @@ try {
 
 // le socle complet se génère sans marqueur restant, PHP valide, balises Twig équilibrées
 $dest = t_tmp('socle') . '/';
-$ecrits = sptg_generer_socle($dest, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr'));
+$ecrits = sptg_generer_socle($dest, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr', 'BUILD' => 'test'));
 t_ok(in_array('mon-theme.php', $ecrits) and in_array('sptg_runtime.php', $ecrits), 'socle : fichiers PHP générés', implode(' ', $ecrits));
 t_ok(in_array('templates/partials/base.html.twig', $ecrits) and in_array('templates/home.html.twig', $ecrits), 'socle : fichiers Twig générés', implode(' ', $ecrits));
 t_ok(!preg_grep('/\.tpl$|__slug__/', $ecrits), 'socle : ni .tpl ni __slug__ dans les noms');
@@ -338,7 +338,7 @@ t_eq(sptg_liens_internes('[x->art11] [y->rub1#a]', array('article' => array(11 =
 
 // thème réutilisé : helpers présents, anciens ou absents
 $dt = t_tmp('helpers') . '/';
-sptg_generer_socle($dt, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr'));
+sptg_generer_socle($dt, 'mon-theme', array('CLASSE' => 'MonTheme', 'LANGUE_SITE' => 'fr', 'BUILD' => 'test'));
 t_eq(sptg_theme_helpers($dt)['etat'], 'ok', 'helpers : thème généré compatible');
 $rt_src = file_get_contents($dt . 'sptg_runtime.php');
 file_put_contents($dt . 'sptg_runtime.php', preg_replace('/const API = \d+;/', 'const API = 0;', $rt_src));

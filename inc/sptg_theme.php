@@ -270,6 +270,11 @@ function sptg_twig_objet(array $info, $emails) {
  *
  * @return array liste des fichiers écrits (relatifs à $dest)
  */
+/** Signature de génération, écrite dans le thème (meta generator) : permet de vérifier quel thème est servi */
+function sptg_theme_build() {
+	return 'spip_to_grav ' . date('Y-m-d H:i');
+}
+
 function sptg_generer_socle($dest, $slug, array $vars) {
 	$base = sptg_gabarits_dir() . '/theme';
 	$vars = $vars + array('SLUG' => $slug);
@@ -297,7 +302,7 @@ function sptg_generer_theme($dest, $slug, array $types, $emails) {
 	if (!preg_match('/^[a-z]{2,3}([_-][a-zA-Z]{2,4})?$/', $langue)) {
 		$langue = 'fr';
 	}
-	sptg_generer_socle($dest, $slug, array('CLASSE' => $classe, 'LANGUE_SITE' => $langue));
+	sptg_generer_socle($dest, $slug, array('CLASSE' => $classe, 'LANGUE_SITE' => $langue, 'BUILD' => sptg_theme_build()));
 	sptg_ecrire($dest . $slug . '.yaml', "enabled: true\n");
 	sptg_ecrire($dest . 'blueprints.yaml', sptg_yaml(array(
 		'name' => ucfirst($slug),

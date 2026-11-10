@@ -1394,6 +1394,7 @@ function sptg_exporter(array $o) {
 			$types_utilises[$it['info']['type']] = $it['info'];
 		}
 		sptg_generer_theme($themes . $slug_theme . '/', $slug_theme, $types_utilises, (bool) $o['inclure_emails']);
+		$rapport['theme_build'] = sptg_theme_build();
 	}
 
 	$rapport['logos_survol'] = sptg_logos_survol_nb();
@@ -1480,6 +1481,9 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "- " . $r['comptes']['resume'] . "\n";
 	}
 	if ($r['liens_stables']) {
+	if (!empty($r['theme_build'])) {
+		$t .= "- Thème généré : `" . $r['theme_build'] . "` (balise `<meta name=\"generator\">` dans le code source des pages : si elle diffère sur le site, le thème servi n'est pas celui-ci ; vider aussi le cache de Grav)\n";
+	}
 		$t .= "- Liens internes stables (idx:type/id) : " . $r['liens_stables'] . "\n";
 	}
 	$t .= "- Schéma d'URL : " . $r['schema_urls'] . " ; index des identifiants : " . $r['index'] . " entrée(s) dans user/data/spip-id\n";
