@@ -283,4 +283,30 @@ $r12b = sptg_exporter(array(
 ));
 t_ok(empty($r12b['comptes']), 'comptes export : option décochée → rien');
 
+// ------------------------------------------------ 13. Twig jamais actif dans le contenu (Grav 2.x l'ouvre par défaut)
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'Actu')),
+		'spip_articles' => array(art(10, 1, 'Accolades', "Texte {{}} puis {{gras}}.")),
+	),
+));
+list($r, $dest) = lancer('twig');
+$fichiers_md = array();
+$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator("$dest/user/pages", FilesystemIterator::SKIP_DOTS));
+foreach ($it as $f) {
+	if (substr($f->getFilename(), -3) === '.md') {
+		$fichiers_md[] = $f->getPathname();
+	}
+}
+t_ok(count($fichiers_md) >= 3, 'twig : pages trouvées (accueil, rubrique, article)', implode(' ', $fichiers_md));
+$sans = array();
+foreach ($fichiers_md as $f) {
+	$c = file_get_contents($f);
+	if (!preg_match('/^---\n(.*?)\n---\n/s', $c, $m) or !preg_match('/^process:\n(?:[ ]+.*\n)*?[ ]+twig: false/m', $m[1] . "\n")) {
+		$sans[] = $f;
+	}
+}
+t_eq($sans, array(), 'twig : process.twig=false dans toutes les pages');
+
 t_fin('integration');

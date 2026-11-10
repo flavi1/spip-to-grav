@@ -69,5 +69,13 @@ function sptg_yaml($v, $niveau = 0) {
 
 /** Fichier page Grav : frontmatter + corps */
 function sptg_page_md(array $header, $corps = '') {
+	// Jamais de Twig dans le contenu importé : Grav 2.x l'ouvre par défaut sur tout le site (security.twig_content),
+	// et le texte SPIP peut contenir des « {{ » ou « {% » littéraux qui provoquent une erreur 500.
+	$process = isset($header['process']) && is_array($header['process']) ? $header['process'] : array();
+	$process['twig'] = false;
+	if (!isset($process['markdown'])) {
+		$process['markdown'] = true;
+	}
+	$header['process'] = $process;
 	return "---\n" . sptg_yaml($header) . "---\n\n" . $corps . "\n";
 }

@@ -171,7 +171,7 @@ function sptg_comptes_existants($racine) {
  *
  * @return array ['crees' => n, 'fichiers' => chemins relatifs écrits, 'ignores' => [...], 'prerequis' => texte]
  */
-function sptg_comptes_exporter($racine, array $auteurs = null) {
+function sptg_comptes_exporter($racine, ?array $auteurs = null) {
 	$auteurs = $auteurs === null ? sptg_comptes_lire() : $auteurs;
 	list($ident, $emails) = sptg_comptes_existants($racine);
 	$r = sptg_comptes_construire($auteurs, $ident, $emails);
