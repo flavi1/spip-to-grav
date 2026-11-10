@@ -305,6 +305,34 @@ class Runtime
         );
     }
 
+    // ------------------------------------------------------------------ site dans un sous-dossier
+
+    /**
+     * Préfixe par $base (ex. « /mon-site ») les href/src absolus « /... » du HTML brut.
+     *
+     * Grav préfixe lui-même les liens et images écrits en Markdown, mais pas le HTML brut (contenus gardés en
+     * HTML : tableaux, notes, textes dont la conversion n'était pas exacte). Les URL déjà préfixées, les URL
+     * relatives au protocole (//hôte) et les ancres sont laissées telles quelles.
+     */
+    public function prefixerRacine($html, $base)
+    {
+        $base = rtrim((string) $base, '/');
+        if ($base === '' || strpos((string) $html, '="/') === false && strpos((string) $html, "='/") === false) {
+            return $html;
+        }
+        return preg_replace_callback(
+            '/\b(href|src|poster|action)=(["\'])\/(?!\/)([^"\']*)\2/i',
+            function ($m) use ($base) {
+                $u = '/' . $m[3];
+                if ($u === $base || strpos($u, $base . '/') === 0 || strpos($u, $base . '?') === 0 || strpos($u, $base . '#') === 0) {
+                    return $m[0];
+                }
+                return $m[1] . '=' . $m[2] . $base . $u . $m[2];
+            },
+            $html
+        );
+    }
+
     // ------------------------------------------------------------------ traductions
 
     /**

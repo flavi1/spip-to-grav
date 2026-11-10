@@ -85,16 +85,30 @@ class @@CLASSE@@ extends Theme
 		$this->grav->redirect($p['url'], 301);
 	}
 
-	/** Liens stables « spip:type/id » : résolus à la sortie (le cache de contenu de Grav n'est pas concerné) */
+	/**
+	 * Sortie de page : liens stables « spip:type/id » résolus (le cache de contenu de Grav n'est pas concerné) et,
+	 * pour un site installé dans un sous-dossier, chemins absolus du HTML brut préfixés par ce sous-dossier.
+	 * L'administration n'est jamais touchée.
+	 */
 	public function onOutputGenerated(): void
 	{
 		$out = $this->grav->output ?? null;
-		if (!is_string($out) or strpos($out, 'spip:') === false) {
+		if (!is_string($out) or $out === '') {
 			return;
 		}
+		$chemin = (string) $this->grav['uri']->path();
+		foreach (['admin', 'admin2'] as $plugin) {
+			$route = (string) $this->grav['config']->get('plugins.' . $plugin . '.route', '');
+			if ($route !== '' and strpos($chemin, $route) === 0) {
+				return;
+			}
+		}
+		$rt = $this->sptgRuntime();
 		$langue = $this->grav['language'];
 		$actif = $langue->enabled() ? (string) $langue->getActive() : '';
-		$this->grav->output = $this->sptgRuntime()->resoudreLiens($out, $actif);
+		$out = $rt->resoudreLiens($out, $actif);
+		$out = $rt->prefixerRacine($out, (string) $this->grav['base_url_relative']);
+		$this->grav->output = $out;
 	}
 
 	public function onTwigExtensions(): void

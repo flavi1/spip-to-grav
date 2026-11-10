@@ -352,4 +352,66 @@ t_eq(sptg_theme_helpers('/inexistant')['etat'], 'absent', 'helpers : thème inex
 $out = sptg_gabarit('theme/__slug__.php', array('CLASSE' => 'X'));
 t_ok(strpos($out, 'public function onOutputGenerated') !== false and strpos($out, 'resoudreLiens') !== false, 'thème : onOutputGenerated résout les liens stables');
 
+// ---------------------------------------------------------------- site dans un sous-dossier
+$h = '<a href="/actu/a">a</a> <img src="/images/x.jpg" alt=""> <a href="/mon-site/deja">b</a> <a href="//cdn.org/x">c</a> <a href="#t">d</a> <a href="http://h/x">e</a> <a href=\'/q?a=1\'>f</a> <a href="/mon-site">g</a> <a href="/mon-site2/x">h</a>';
+$o = $rt()->prefixerRacine($h, '/mon-site');
+t_ok(strpos($o, 'href="/mon-site/actu/a"') !== false and strpos($o, 'src="/mon-site/images/x.jpg"') !== false, 'sous-dossier : chemins absolus préfixés', $o);
+t_ok(strpos($o, 'href="/mon-site/deja"') !== false and strpos($o, 'href="/mon-site/mon-site/deja"') === false, 'sous-dossier : pas de double préfixe', $o);
+t_ok(strpos($o, 'href="//cdn.org/x"') !== false and strpos($o, 'href="#t"') !== false and strpos($o, 'href="http://h/x"') !== false, 'sous-dossier : URL relatives au protocole, ancres et externes intactes', $o);
+t_ok(strpos($o, "href='/mon-site/q?a=1'") !== false and strpos($o, 'href="/mon-site"') !== false, 'sous-dossier : guillemets simples, racine du sous-dossier', $o);
+t_ok(strpos($o, 'href="/mon-site/mon-site2/x"') !== false, 'sous-dossier : préfixe voisin (/mon-site2) traité comme un chemin ordinaire', $o);
+t_eq($rt()->prefixerRacine($h, ''), $h, 'sous-dossier : site à la racine du domaine → rien');
+t_eq($rt()->prefixerRacine('sans lien', '/x'), 'sans lien', 'sous-dossier : texte sans lien');
+t_ok(strpos(sptg_gabarit('theme/__slug__.php', array('CLASSE' => 'X')), "'admin2'") !== false, 'thème : l\'administration est exclue de la réécriture');
+
+// documents joints : extensions à déclarer dans media.yaml
+t_eq(sptg_config_media(array('pdf' => 1, 'jpg' => 1, 'zip' => 1)), array(), 'media : extensions connues de Grav → rien');
+$m = sptg_config_media(array('odt' => 1, 'csv' => 1, 'pdf' => 1, 'xyz' => 1, 'EVIL/../' => 1, '' => 1));
+t_eq(array_keys($m), array('csv', 'odt', 'xyz'), 'media : extensions inconnues déclarées, valeurs douteuses ignorées');
+t_eq($m['odt']['mime'], 'application/vnd.oasis.opendocument.text', 'media : mime connu');
+t_eq($m['xyz']['mime'], 'application/octet-stream', 'media : mime par défaut');
+t_eq($m['csv']['type'], 'file', 'media : type file');
+$dc = t_tmp('doc');
+file_put_contents("$dc/a.ODT", 'x');
+$ctx = array('noms' => array(), 'dirabs' => "$dc/page/", 'stats' => array('fichiers' => 0, 'fichiers_absents' => 0, 'images_partagees' => 0), 'extensions' => array(), 'mode_images' => 'partage');
+t_eq(sptg_fichier_ref($ctx, "$dc/a.ODT", 'IMG/odt/a.ODT'), 'a.ODT', 'document : référence = nom du fichier');
+t_eq(array_keys($ctx['extensions']), array('odt'), 'document : extension relevée en minuscules');
+t_ok(is_file("$dc/page/a.ODT"), 'document : copié dans le dossier de la page');
+
+// ---------------------------------------------------------------- cohérence avec SPIP (statique)
+// autorisations : SPIP appelle autoriser('menu', '_exporter_grav') pour l'entrée de menu du paquet.xml
+// et autoriser('exporter', '_sptg') pour la page et le formulaire (type normalisé sans « _ »)
+require_once SPTG_RACINE . 'sptg_autorisations.php';
+t_ok(function_exists('autoriser_exporter_grav_menu_dist'), 'SPIP : autorisation de l\'entrée de menu (autoriser_exporter_grav_menu_dist)');
+t_ok(function_exists('autoriser_sptg_exporter_dist'), 'SPIP : autorisation d\'exporter');
+t_ok(strpos(file_get_contents(SPTG_RACINE . 'paquet.xml'), 'name="exporter_grav"') !== false or strpos(file_get_contents(SPTG_RACINE . 'paquet.xml'), 'nom="exporter_grav"') !== false, 'SPIP : entrée de menu exporter_grav dans paquet.xml');
+t_ok(is_file(SPTG_RACINE . 'prive/squelettes/contenu/exporter_grav.html'), 'SPIP : squelette de la page exporter_grav');
+
+// chaînes de langue : chaque <:sptg:cle:> et _T('sptg:cle') doit exister
+$lang = array();
+$GLOBALS['lang_tmp'] = null;
+$src = file_get_contents(SPTG_RACINE . 'lang/sptg_fr.php');
+preg_match_all("/^\s*'([a-z0-9_]+)'\s*=>/m", $src, $mm);
+$cles = array_flip($mm[1]);
+$manque = array();
+foreach (array_merge(glob(SPTG_RACINE . 'formulaires/*'), glob(SPTG_RACINE . 'prive/squelettes/contenu/*'), glob(SPTG_RACINE . 'inc/*.php'), glob(SPTG_RACINE . 'action/*.php')) as $f) {
+	$txt = file_get_contents($f);
+	preg_match_all('/<:sptg:([a-z0-9_]+)(?:\{|:)/', $txt, $a);
+	preg_match_all("/_T\\('sptg:([a-z0-9_]+)'/", $txt, $b);
+	foreach (array_merge($a[1], $b[1]) as $c) {
+		if (substr($c, -1) === '_') {
+			continue; // clé construite dynamiquement (statut_ + statut) : vérifiée ci-dessous
+		}
+		if (!isset($cles[$c])) {
+			$manque[] = basename($f) . ':' . $c;
+		}
+	}
+}
+foreach (array('publie', 'prop', 'prepa', 'refuse', 'poubelle') as $st) {
+	if (!isset($cles['statut_' . $st])) {
+		$manque[] = 'statut_' . $st;
+	}
+}
+t_eq($manque, array(), 'SPIP : toutes les chaînes de langue utilisées existent dans lang/sptg_fr.php');
+
 t_fin('unit');

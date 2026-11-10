@@ -11,6 +11,13 @@ Plugin SPIP 4.1+ qui génère, depuis un site SPIP, une archive ZIP contenant :
 
 Copier ce dépôt dans `plugins/spip_to_grav/` (ou `plugins-dist/`), activer le plugin, puis **Édition → Export vers Grav** (webmestres).
 
+## Première utilisation : parcourir le résultat dans un navigateur
+
+- Dossier de destination : sous la racine web (ex. `<spip>/grav-test`), jamais dans `tmp/` (protégé par un `.htaccess` de SPIP), accessible en écriture au serveur web. Avec « installer la dernière version de Grav » et un dossier vide, `destination/<nom-de-l-export>/` reçoit Grav complet.
+- Grav dans un sous-dossier : les liens et images Markdown sont préfixés par Grav ; le HTML brut (contenus gardés en HTML) est préfixé par le thème à la sortie (`prefixerRacine`). L'administration n'est pas touchée.
+- Documents joints : copiés dans le dossier de la page et servis par Grav via la route de la page ; seules les extensions connues de Grav sont servies, les autres (odt, csv, epub…) sont déclarées dans `user/config/media.yaml` (ou données à fusionner dans le rapport si Grav était déjà installé).
+- Images : dossier partagé `/images/…` (servi directement) ou `/IMG/…` copié à la racine de Grav (mode IMG).
+
 ## Destination
 
 - Par défaut : `/tmp/grav/<export_name>/user/{pages,themes}`.

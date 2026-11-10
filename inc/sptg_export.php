@@ -289,6 +289,9 @@ function sptg_fichier_ref(array &$ctx, $abs, $rel) {
 		$ctx['stats']['fichiers_absents']++;
 		return '/' . $rel;
 	}
+	if (isset($ctx['extensions'])) {
+		$ctx['extensions'][strtolower(pathinfo($abs, PATHINFO_EXTENSION))] = 1;
+	}
 	$nom = basename($abs);
 	if (isset($ctx['noms'][$nom]) and $ctx['noms'][$nom] !== $abs) {
 		$nom = substr(md5($abs), 0, 6) . '-' . $nom;
@@ -300,6 +303,41 @@ function sptg_fichier_ref(array &$ctx, $abs, $rel) {
 		$ctx['stats']['fichiers']++;
 	}
 	return $nom;
+}
+
+/** Extensions de fichiers que Grav sert par défaut (system/config/media.yaml) ; les autres donnent une 404 */
+function sptg_media_grav_defauts() {
+	return array(
+		'jpg', 'jpe', 'jpeg', 'png', 'webp', 'avif', 'gif', 'svg', 'mp4', 'mov', 'm4v', 'swf', 'flv', 'webm', 'ogv', 'mp3', 'ogg',
+		'wma', 'm4a', 'wav', 'aiff', 'aif', 'txt', 'xml', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'pps', 'rtf', 'bmp', 'tiff',
+		'mpeg', 'mpg', 'mpe', 'avi', 'wmv', 'html', 'htm', 'ics', 'pdf', 'ai', 'psd', 'zip', '7z', 'gz', 'tar', 'css', 'js', 'json', 'vcf',
+	);
+}
+
+/**
+ * Types de média à déclarer dans user/config/media.yaml pour que Grav serve les documents joints
+ * dont l'extension n'est pas connue de sa configuration par défaut (odt, csv, epub…).
+ *
+ * @param array $extensions extensions => 1
+ * @return array ext => [type, thumb, mime] (vide si rien à ajouter)
+ */
+function sptg_config_media(array $extensions) {
+	$mimes = array(
+		'odt' => 'application/vnd.oasis.opendocument.text', 'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
+		'odp' => 'application/vnd.oasis.opendocument.presentation', 'odg' => 'application/vnd.oasis.opendocument.graphics',
+		'csv' => 'text/csv', 'epub' => 'application/epub+zip', 'rar' => 'application/vnd.rar', 'bz2' => 'application/x-bzip2',
+		'tgz' => 'application/gzip', 'flac' => 'audio/flac', 'opus' => 'audio/ogg', 'oga' => 'audio/ogg', 'm4b' => 'audio/mp4',
+		'mkv' => 'video/x-matroska', 'md' => 'text/markdown', 'kml' => 'application/vnd.google-earth.kml+xml', 'eps' => 'application/postscript',
+	);
+	$types = array();
+	foreach (array_keys($extensions) as $e) {
+		if (!preg_match('/^[a-z0-9]{1,8}$/', $e) or in_array($e, sptg_media_grav_defauts(), true)) {
+			continue;
+		}
+		$types[$e] = array('type' => 'file', 'thumb' => 'media/thumb.png', 'mime' => $mimes[$e] ?? 'application/octet-stream');
+	}
+	ksort($types);
+	return $types;
 }
 
 function sptg_prefixe_logo($type) {
@@ -488,7 +526,7 @@ function sptg_exporter(array $o) {
 		'redirections' => 0, 'non_redirigeables' => 0, 'approx' => 0, 'fmt_html' => 0,
 		'doublons' => array(), 'trad_conflits' => array(), 'langues' => array(), 'index' => 0,
 		'grav' => '', 'moteur_redirections' => '', 'schema_urls' => $o['schema_urls'],
-		'liens_stables' => '', 'theme_helpers' => '',
+		'liens_stables' => '', 'theme_helpers' => '', 'media_types' => array(),
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
@@ -522,6 +560,7 @@ function sptg_exporter(array $o) {
 		$rapport['liens_stables'] = $stables ? 'actifs' : 'non activés (routes absolues) : ' . $rapport['theme_helpers'];
 	}
 	$inverse = array();
+	$extensions = array();
 	sptg_mkdir($pages);
 	if (!is_dir($pages) or !is_writable($pages)) {
 		throw new \RuntimeException('Dossier de destination non accessible en écriture : ' . $pages);
@@ -853,7 +892,7 @@ function sptg_exporter(array $o) {
 		foreach ($langues_obj ?: array('') as $lang_fichier) {
 			$lang_rendu = $lang_fichier !== '' ? $lang_fichier : ($lang_objet !== '' ? $lang_objet : $cl['langue_site']);
 			$ctx = array(
-				'routes' => &$routes, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+				'routes' => &$routes, 'extensions' => &$extensions, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
 				'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 				'dirabs' => $dirabs, 'route' => $it['pub'] . ($lang_fichier !== '' ? ' [' . $lang_fichier . ']' : ''), 'noms' => &$noms_item,
 				'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
@@ -1041,7 +1080,7 @@ function sptg_exporter(array $o) {
 	foreach ($multi_actif ? $cl['langues'] : array('') as $lf) {
 		$lr = $lf !== '' ? $lf : $cl['langue_site'];
 		$ctx = array(
-			'routes' => &$routes, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
+			'routes' => &$routes, 'extensions' => &$extensions, 'stables' => $stables, 'inverse' => &$inverse, 'markdown' => $o['markdown'], 'verifier' => $o['verifier'],
 			'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 			'dirabs' => $pages . '01.home/', 'route' => '/home', 'noms' => array(),
 			'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
@@ -1099,9 +1138,14 @@ function sptg_exporter(array $o) {
 		$config_system['pages']['theme'] = $slug_theme;
 	}
 	$fichiers_config = array();
+	$types_media = sptg_config_media($extensions);
+	$rapport['media_types'] = array_keys($types_media);
 	if (!$est_install) {
 		sptg_ecrire($racine . 'user/config/site.yaml', sptg_yaml($config_site));
 		sptg_ecrire($racine . 'user/config/system.yaml', sptg_yaml($config_system));
+		if ($types_media) {
+			sptg_ecrire($racine . 'user/config/media.yaml', sptg_yaml(array('types' => $types_media)));
+		}
 		$fichiers_config = array('user/config');
 	}
 
@@ -1135,6 +1179,10 @@ function sptg_exporter(array $o) {
 	if ($est_install) {
 		$snippet = "# À fusionner dans user/config/system.yaml\n" . sptg_yaml($config_system)
 			. "\n# À fusionner dans user/config/site.yaml\n" . sptg_yaml($config_site);
+		if ($types_media) {
+			$snippet .= "\n# À fusionner dans user/config/media.yaml (sans cela Grav répond 404 pour ces extensions)\n"
+				. sptg_yaml(array('types' => $types_media));
+		}
 	}
 	$tmp = sous_repertoire(_DIR_TMP, 'sptg');
 	$nom_rapport = $export_name . '-rapport.md';
@@ -1171,6 +1219,9 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	}
 	if ($r['theme_helpers']) {
 		$t .= "- " . $r['theme_helpers'] . "\n";
+	}
+	if ($r['media_types']) {
+		$t .= "- Types de média ajoutés à Grav (user/config/media.yaml) : " . implode(', ', $r['media_types']) . "\n";
 	}
 	if ($r['liens_stables']) {
 		$t .= "- Liens internes stables (spip:type/id) : " . $r['liens_stables'] . "\n";

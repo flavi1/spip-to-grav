@@ -11,7 +11,7 @@ function autoriser_sptg_exporter_dist($faire, $type, $id, $qui, $opt) {
 	return autoriser('webmestre', '', 0, $qui);
 }
 
-/** Visibilité du bouton de menu */
-function autoriser_exporter_grav_bouton_dist($faire, $type, $id, $qui, $opt) {
+/** Visibilité de l'entrée de menu (paquet.xml : menu exporter_grav ; SPIP appelle autoriser(menu, _exporter_grav)) */
+function autoriser_exporter_grav_menu_dist($faire, $type, $id, $qui, $opt) {
 	return autoriser('exporter', '_sptg', 0, $qui);
 }

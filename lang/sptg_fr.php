@@ -54,7 +54,7 @@ $GLOBALS[$GLOBALS['idx_lang']] = array(
 	'legende_cible' => 'Destination',
 	'label_export_name' => 'Nom de l’export',
 	'label_destination' => 'Dossier de destination',
-	'aide_destination' => 'Si ce dossier est une installation Grav (user/, system/, index.php), l’export s’y fait directement ; sinon il va dans <code>destination/nom-de-l-export/user/…</code>.',
+	'aide_destination' => 'Si ce dossier est une installation Grav (user/, system/, index.php), l’export s’y fait directement ; sinon il va dans <code>destination/nom-de-l-export/user/…</code>. Pour parcourir le résultat dans un navigateur, choisir un dossier servi par le serveur web (le dossier <code>tmp/</code> de SPIP est protégé par un .htaccess) et lisible/modifiable par l’utilisateur du serveur web.',
 	'detection_grav' => 'Installation Grav détectée à cet emplacement.',
 	'option_vider' => 'Vider user/pages et écraser le thème du même nom si présents',
 	'aide_nom_theme' => 'Vide = nom de l’export + « -theme ».',
