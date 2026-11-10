@@ -176,13 +176,16 @@ function sptg_comptes_exporter($racine, ?array $auteurs = null) {
 	list($ident, $emails) = sptg_comptes_existants($racine);
 	$r = sptg_comptes_construire($auteurs, $ident, $emails);
 	$fichiers = array();
+	$liste = array();
 	foreach ($r['comptes'] as $u => $data) {
+		$liste[$u] = array('nom' => $data['fullname'], 'intitule' => $data['title'], 'super' => !empty($data['access']['admin']['super']));
 		sptg_ecrire(rtrim($racine, '/') . '/user/accounts/' . $u . '.yaml', sptg_yaml($data));
 		$fichiers[] = 'user/accounts/' . $u . '.yaml';
 	}
 	return array(
 		'crees' => count($r['comptes']),
 		'fichiers' => $fichiers,
+		'liste' => $liste,
 		'ignores' => $r['ignores'],
 		'prerequis' => 'Plugins Grav `login`, `email`, `api` et `admin2` installés ; expéditeur configuré '
 			. '(`plugins.email.from` et moteur d\'envoi) ; idéalement `plugins.login.site_host` renseigné. '

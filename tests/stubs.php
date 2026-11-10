@@ -106,6 +106,13 @@ function sql_allfetsel($sel, $from, $where = array()) {
 	return $rows;
 }
 function sql_fetsel($s, $f, $w = '') {
+	if (strpos($f, 'spip_documents_liens') !== false) {
+		$ww = is_array($w) ? implode(' AND ', $w) : (string) $w;
+		if (preg_match("/D\.mode='(logo(?:on|off))'/", $ww, $a) and preg_match("/L\.objet='([^']*)'/", $ww, $b) and preg_match('/L\.id_objet=(\d+)/', $ww, $c)) {
+			return $GLOBALS['SC']['logos'][$a[1] . ':' . $b[1] . ':' . $c[1]] ?? false;
+		}
+		return false;
+	}
 	if ($f === 'spip_documents') {
 		return array('id_document' => 5, 'titre' => 'La photo', 'fichier' => 'jpg/photo.jpg', 'extension' => 'jpg', 'distant' => 'non',
 			'descriptif' => '', 'mode' => 'image', 'largeur' => 10, 'hauteur' => 10, 'taille' => 3, 'credits' => '');

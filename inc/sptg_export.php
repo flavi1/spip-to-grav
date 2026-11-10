@@ -22,6 +22,7 @@ include_spip('inc/sptg_index');
 include_spip('inc/sptg_langues');
 include_spip('inc/sptg_grav_install');
 include_spip('inc/sptg_comptes');
+include_spip('inc/sptg_logos');
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -354,14 +355,6 @@ function sptg_config_media(array $extensions) {
 	return $types;
 }
 
-function sptg_prefixe_logo($type) {
-	if (function_exists('type_du_logo')) {
-		return type_du_logo(id_table_objet($type));
-	}
-	$m = array('article' => 'arton', 'rubrique' => 'rubon', 'auteur' => 'auton', 'mot' => 'moton', 'breve' => 'breveon');
-	return isset($m[$type]) ? $m[$type] : $type . 'on';
-}
-
 /** Lit les lignes d'un type d'objet en appliquant le filtre de statuts */
 function sptg_lire_objets(array $info, array $statuts) {
 	$where = array();
@@ -476,6 +469,34 @@ function sptg_rendre_texte_interne($raw, array &$ctx, $champ) {
 		$html
 	);
 
+	// liens vers l'espace privé (ex. glossaire : ecrire/?exec=definition&id_definition=1) : propre() les produit
+	// quand l'export tourne dans ecrire/ ; remplacés par la route de l'objet exporté, sinon signalés
+	$html = preg_replace_callback(
+		'~\bhref=(["\'])(?:https?://[^/"\']+)?/?(?:\.\./)?ecrire/\?exec=([a-z_]+)&(?:amp;)?id_\2=(\d+)(#[^"\']*)?\1~i',
+		function ($m) use (&$ctx, $champ) {
+			$type = strtolower($m[2]);
+			$id = (int) $m[3];
+			if (isset($ctx['routes'][$type][$id])) {
+				return 'href=' . $m[1] . (isset($ctx['prefixe']) ? $ctx['prefixe'] : '') . $ctx['routes'][$type][$id] . (isset($m[4]) ? $m[4] : '') . $m[1];
+			}
+			if (isset($ctx['liens_prives'])) {
+				$ctx['liens_prives'][] = array('page' => $ctx['route'], 'champ' => $champ, 'url' => html_entity_decode($m[0]));
+			}
+			return $m[0];
+		},
+		$html
+	);
+
+	// liens absolus vers le site SPIP actuel (non résolus : à repasser en liens internes si besoin)
+	if (isset($ctx['liens_site']) and !empty($GLOBALS['meta']['adresse_site'])) {
+		$hote = parse_url($GLOBALS['meta']['adresse_site'], PHP_URL_HOST);
+		if ($hote and preg_match_all('~href=["\'](https?://' . preg_quote($hote, '~') . '[^"\']*)["\']~i', $html, $ms)) {
+			foreach ($ms[1] as $u) {
+				$ctx['liens_site'][] = array('page' => $ctx['route'], 'champ' => $champ, 'url' => html_entity_decode($u));
+			}
+		}
+	}
+
 	// liens internes non résolus (URL SPIP « à paramètres »)
 	if (preg_match_all('~href=["\']([^"\']*(?:spip\.php\?|[?&]id_(?:article|rubrique|breve|mot|auteur)=)[^"\']*)["\']~i', $html, $mm)) {
 		foreach ($mm[1] as $u) {
@@ -544,6 +565,8 @@ function sptg_exporter(array $o) {
 		'doublons' => array(), 'trad_conflits' => array(), 'langues' => array(), 'index' => 0,
 		'grav' => '', 'moteur_redirections' => '', 'schema_urls' => $o['schema_urls'],
 		'liens_stables' => '', 'theme_helpers' => '', 'media_types' => array(), 'comptes' => array(),
+		'logos' => array(), 'logos_nb' => array(), 'logos_survol' => 0,
+		'liens_prives' => array(), 'liens_site' => array(), 'alertes' => array(),
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
@@ -892,6 +915,7 @@ function sptg_exporter(array $o) {
 	// ---- 4/5. Rendu et écriture des pages (un fichier par langue en mode <multi>)
 	$compte = array();
 	$partage_vus = array();
+	$logos_vus = array();
 	$prefixe_de = function ($lang) use ($multi_actif, $cl) {
 		return ($multi_actif and $lang !== '' and $lang !== $cl['langue_site']) ? '/' . $lang : '';
 	};
@@ -913,6 +937,7 @@ function sptg_exporter(array $o) {
 				'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 				'dirabs' => $dirabs, 'route' => $it['pub'] . ($lang_fichier !== '' ? ' [' . $lang_fichier . ']' : ''), 'noms' => &$noms_item,
 				'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
+				'liens_prives' => &$rapport['liens_prives'], 'liens_site' => &$rapport['liens_site'],
 				'lang' => $lang_rendu, 'prefixe' => $prefixe_de($lang_fichier),
 			);
 			$html_champs = array();
@@ -950,9 +975,21 @@ function sptg_exporter(array $o) {
 
 			// logo (image : dossier partagé ou IMG selon le mode)
 			$logo = array();
-			$g = glob(_DIR_IMG . sptg_prefixe_logo($type) . $id . '.*');
-			if ($g) {
-				$logo['logo_url'] = sptg_fichier_ref($ctx, $g[0], 'IMG/' . basename($g[0]));
+			$lg = sptg_logo_trouver($type, $id);
+			if ($lg) {
+				$logo['logo_url'] = sptg_fichier_ref($ctx, $lg['abs'], $lg['rel']);
+			}
+			if (!isset($logos_vus[$cle])) {
+				$logos_vus[$cle] = 1;
+				$rapport['logos_nb'][$type] = isset($rapport['logos_nb'][$type]) ? $rapport['logos_nb'][$type] : array('objets' => 0, 'logos' => 0);
+				$rapport['logos_nb'][$type]['objets']++;
+				if ($lg) {
+					$rapport['logos_nb'][$type]['logos']++;
+					$rapport['logos'][] = array(
+						'type' => $type, 'id' => $id, 'route' => $it['pub'], 'source' => $lg['source'], 'fichier' => $lg['rel'],
+						'ref' => $logo['logo_url'], 'present' => is_file($lg['abs']),
+					);
+				}
 			}
 
 			// champs
@@ -1030,6 +1067,21 @@ function sptg_exporter(array $o) {
 				$corps = $res['val'];
 				$corps_fmt = $res['fmt'];
 			}
+			$route_al = $it['pub'] . ($lang_fichier !== '' ? ' [' . $lang_fichier . ']' : '');
+			if (preg_match('/\{\{|\{%|\{#/', $corps)) {
+				$rapport['alertes']['Contenu contenant « {{ », « {% » ou « {# » (Twig neutralisé : process.twig=false)'][] = $route_al;
+			}
+			foreach (array('script', 'iframe', 'embed', 'object', 'form', 'style') as $balise_al) {
+				if (stripos($corps, '<' . $balise_al) !== false) {
+					$rapport['alertes']['Contenu contenant une balise <' . $balise_al . '>'][] = $route_al;
+				}
+			}
+			if (trim(isset($header['title']) ? (string) $header['title'] : '') === '') {
+				$rapport['alertes']['Page sans titre'][] = $route_al;
+			}
+			if ($type !== 'rubrique' and isset($info['champs']['texte']) and trim(strip_tags($corps)) === '' and stripos($corps, '<img') === false) {
+				$rapport['alertes']['Page au corps vide (hors rubriques)'][] = $route_al;
+			}
 			if ($corps_fmt == 'html') {
 				$header['process'] = array('markdown' => false, 'twig' => false);
 				$rapport['fmt_html']++;
@@ -1101,6 +1153,7 @@ function sptg_exporter(array $o) {
 			'mode_images' => $o['mode_images'], 'partage_dir' => $pages . 'images/', 'partage_vus' => &$partage_vus,
 			'dirabs' => $pages . '01.home/', 'route' => '/home', 'noms' => array(),
 			'ecarts' => &$rapport['ecarts'], 'liens_bruts' => &$rapport['liens_bruts'], 'stats' => &$rapport['stats'],
+			'liens_prives' => &$rapport['liens_prives'], 'liens_site' => &$rapport['liens_site'],
 			'lang' => $lr, 'prefixe' => $prefixe_de($lf),
 		);
 		$res = sptg_rendre_texte($desc_site, $ctx, 'descriptif_site');
@@ -1174,6 +1227,8 @@ function sptg_exporter(array $o) {
 		}
 		sptg_generer_theme($themes . $slug_theme . '/', $slug_theme, $types_utilises, (bool) $o['inclure_emails']);
 	}
+
+	$rapport['logos_survol'] = sptg_logos_survol_nb();
 
 	// ---- comptes des auteurs (rédacteurs admin2, sans mot de passe)
 	if ($o['creer_comptes']) {
@@ -1269,8 +1324,24 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "- $d\n";
 	}
 
+	// logos
+	$t .= "\n## Logos\n\n";
+	foreach ($r['logos_nb'] as $ty => $n) {
+		$t .= "- " . $ty . " : " . $n['logos'] . " logo(s) pour " . $n['objets'] . " objet(s) exporté(s)\n";
+	}
+	$t .= "- Logos de survol (mode logooff, non exportés) : " . (int) $r['logos_survol'] . "\n";
+	$t .= "- Affichage : champ `logo_url` de l'entête de la page, rendu par `partials/logo.html.twig` du thème généré.\n\n";
+	if ($r['logos']) {
+		$t .= "| objet | route | source | fichier SPIP | référence écrite | sur le disque |\n|---|---|---|---|---|---|\n";
+		foreach ($r['logos'] as $l) {
+			$t .= "| " . $l['type'] . " " . $l['id'] . " | " . $l['route'] . " | " . ($l['source'] == 'base' ? 'document SPIP' : 'ancien fichier') . " | `" . $l['fichier'] . "` | `" . $l['ref'] . "` | " . ($l['present'] ? 'oui' : '**ABSENT**') . " |\n";
+		}
+	}
 	if (!empty($r['comptes'])) {
 		$t .= "\n## Comptes des auteurs\n\n- Prérequis : " . $r['comptes']['prerequis'] . "\n";
+		foreach ($r['comptes']['liste'] as $u => $c) {
+			$t .= "- Créé : `" . $u . "` — " . $c['nom'] . " (" . $c['intitule'] . ($c['super'] ? ', super-administrateur' : '') . ")\n";
+		}
 		foreach ($r['comptes']['ignores'] as $i) {
 			$t .= "- Ignoré : auteur " . $i['id_auteur'] . " (" . $i['nom'] . ") — " . $i['raison'] . "\n";
 		}
@@ -1285,6 +1356,34 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "\n## Traductions en conflit : deux objets d'un même groupe ont la même langue (" . count($r['trad_conflits']) . ")\n\n";
 		foreach ($r['trad_conflits'] as $c) {
 			$t .= "- " . $c[0] . " " . $c[1] . " conservé, " . $c[2] . " ignoré dans le groupe (langue " . $c[3] . ")\n";
+		}
+	}
+	if ($r['alertes']) {
+		$t .= "\n## Points d'attention\n\n";
+		foreach ($r['alertes'] as $titre => $pages) {
+			$t .= "### " . $titre . " (" . count($pages) . ")\n\n";
+			foreach (array_slice($pages, 0, 40) as $p) {
+				$t .= "- " . $p . "\n";
+			}
+			if (count($pages) > 40) {
+				$t .= "- … " . (count($pages) - 40) . " autre(s)\n";
+			}
+			$t .= "\n";
+		}
+	}
+	if ($r['liens_prives']) {
+		$t .= "\n## Liens vers l'espace privé de SPIP non résolus (" . count($r['liens_prives']) . ")\n\n";
+		foreach (array_slice($r['liens_prives'], 0, 40) as $l) {
+			$t .= "- " . $l['page'] . " / " . $l['champ'] . " : " . $l['url'] . "\n";
+		}
+	}
+	if ($r['liens_site']) {
+		$t .= "\n## Liens absolus vers le site SPIP actuel (" . count($r['liens_site']) . ")\n\n";
+		foreach (array_slice($r['liens_site'], 0, 40) as $l) {
+			$t .= "- " . $l['page'] . " / " . $l['champ'] . " : " . $l['url'] . "\n";
+		}
+		if (count($r['liens_site']) > 40) {
+			$t .= "- … " . (count($r['liens_site']) - 40) . " autre(s)\n";
 		}
 	}
 	$t .= "\n## Écarts de vérification (" . count($r['ecarts']) . ")\n\n";

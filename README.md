@@ -101,6 +101,12 @@ Règles : les comptes existants ne sont jamais modifiés (ni l'administrateur cr
 
 Prérequis côté Grav (rappelés dans le rapport) : plugins `login`, `email`, `api`, `admin2`, un expéditeur configuré (`plugins.email.from` et moteur d'envoi), idéalement `plugins.login.site_host`. Sans envoi d'email, le lien ne part pas : l'administrateur peut alors définir le mot de passe lui-même.
 
+## Rapport d'export
+
+Le rapport (affiché dans le formulaire et écrit dans `tmp/sptg/`) liste notamment : les logos (par objet : source — document SPIP ou ancien fichier `rubon3.png` —, fichier d'origine, référence écrite, présence sur le disque ; les logos de survol ne sont pas exportés), les comptes créés (jamais les emails), les points d'attention (contenus contenant `{{`/`{%`, balises `script`/`iframe`/`embed`/`object`/`form`/`style`, pages sans titre ou au corps vide), les liens vers l'espace privé de SPIP (`ecrire/?exec=…`) qui n'ont pas pu être résolus, les liens absolus vers le site SPIP actuel, les écarts de vérification Markdown et les liens internes non résolus.
+
+Logos : depuis SPIP 4.0 ils sont des documents de la base (`spip_documents.mode = 'logoon'`, liés par `spip_documents_liens`) ; l'ancien format de fichier n'est qu'un repli.
+
 ## Contenu des pages
 
 Chaque page est `<type>.md` (`article.md`, `breve.md`…). Entête : `title`, `date`, `published`, `taxonomy`, puis tous les champs de la table sous `spip:`. Les blueprints et templates du thème sont générés d'après la structure SQL de chaque type.

@@ -309,4 +309,44 @@ foreach ($fichiers_md as $f) {
 }
 t_eq($sans, array(), 'twig : process.twig=false dans toutes les pages');
 
+// ------------------------------------------------ 14. logos (documents SPIP 4.x), liens espace privé, rapport
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'La revue'), rub(2, 0, 'Sans fichier'), rub(3, 0, 'Sans logo')),
+		'spip_articles' => array(
+			art(10, 1, 'Ancien logo', 'Voir <a href="../ecrire/?exec=rubrique&amp;id_rubrique=3">la rubrique</a>, <a href="https://x.org/ecrire/?exec=definition&amp;id_definition=9">?</a> et <a href="https://exemple.org/autre-page">ailleurs</a>.'),
+		),
+	),
+	'logos' => array(
+		'logoon:rubrique:1' => array('fichier' => 'png/rubon1.png', 'extension' => 'png', 'distant' => 'non'),
+		'logoon:rubrique:2' => array('fichier' => 'png/absent.png', 'extension' => 'png', 'distant' => 'non'),
+	),
+	'meta' => array('nom_site' => 'Mon site', 'descriptif_site' => 'Bienvenue', 'langue_site' => 'fr', 'adresse_site' => 'https://exemple.org'),
+));
+@mkdir(_DIR_IMG . 'png', 0775, true);
+file_put_contents(_DIR_IMG . 'png/rubon1.png', 'PNG');
+file_put_contents(_DIR_IMG . 'arton10.jpg', 'JPG');
+list($r14, $dest14) = lancer('logos');
+$e1 = index($dest14, 'rubrique', 1);
+$p1 = file_get_contents("$dest14/user/pages/{$e1['dossier']}/rubrique.md");
+t_ok(strpos($p1, 'logo_url: "/images/png/rubon1.png"') !== false or strpos($p1, 'logo_url: /images/png/rubon1.png') !== false, 'logos : logo-document de la rubrique 1 référencé', $p1);
+t_ok(is_file("$dest14/user/pages/images/png/rubon1.png"), 'logos : fichier copié dans le dossier partagé');
+$e10 = index($dest14, 'article', 10);
+$p10 = file_get_contents("$dest14/user/pages/{$e10['dossier']}/article.md");
+t_ok(strpos($p10, '/images/arton10.jpg') !== false, 'logos : repli sur l\'ancien fichier arton10.jpg', $p10);
+t_ok(strpos($p10, 'id_rubrique=3') === false, 'liens : plus de lien ecrire/ vers la rubrique exportée', $p10);
+$e3 = index($dest14, 'rubrique', 3);
+t_ok(strpos($p10, '[la rubrique](/sans-logo)') !== false and $e3 !== null, 'liens : lien espace privé remplacé par la route de la rubrique 3', $p10);
+$noms_logos = array();
+foreach ($r14['logos'] as $l) { $noms_logos[] = $l['type'] . $l['id'] . ($l['present'] ? '+' : '-'); }
+sort($noms_logos);
+t_eq($noms_logos, array('article10+', 'rubrique1+', 'rubrique2-'), 'logos : rapport (source, présence disque)');
+t_eq($r14['logos_nb']['rubrique'], array('objets' => 3, 'logos' => 2), 'logos : comptage par type');
+t_eq(count($r14['liens_prives']), 1, 'liens : 1 lien d\'espace privé non résolu (définition 9 non exportée)');
+t_eq(count($r14['liens_site']), 1, 'liens : 1 lien absolu vers le site actuel');
+$rap14 = file_get_contents(_DIR_TMP . 'sptg/' . $r14['rapport']);
+t_ok(strpos($rap14, '## Logos') !== false and strpos($rap14, '**ABSENT**') !== false and strpos($rap14, 'png/rubon1.png') !== false, 'rapport : section Logos', $rap14);
+t_ok(strpos($rap14, "## Liens vers l'espace privé") !== false and strpos($rap14, '## Liens absolus vers le site SPIP actuel') !== false, 'rapport : liens privés et liens absolus', $rap14);
+
 t_fin('integration');
