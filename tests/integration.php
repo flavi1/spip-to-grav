@@ -263,11 +263,12 @@ $cm = @file_get_contents("$dest_c/user/accounts/marie.yaml");
 t_ok($cm !== false and strpos($cm, 'marie@exemple.org') !== false, 'comptes export : fichier écrit avec l\'email', (string) $cm);
 t_ok(strpos((string) $cm, 'password') === false, 'comptes export : pas de mot de passe');
 t_ok(strpos((string) $cm, 'state: "enabled"') !== false or strpos((string) $cm, 'state: enabled') !== false, 'comptes export : compte activé', (string) $cm);
-t_ok(!is_file("$dest_c/user/accounts/sm.yaml"), 'comptes export : auteur sans email ignoré');
+t_ok(is_file("$dest_c/user/accounts/sm2.yaml") and strpos(file_get_contents("$dest_c/user/accounts/sm2.yaml"), 'state: "disabled"') !== false or strpos(file_get_contents("$dest_c/user/accounts/sm2.yaml"), 'state: disabled') !== false, 'comptes export : auteur sans email -> compte désactivé');
+t_ok(strpos(file_get_contents("$dest_c/user/accounts/sm2.yaml"), 'email') === false, 'comptes export : pas d\'email pour le compte désactivé');
 t_eq(file_get_contents("$dest_c/user/accounts/admin.yaml"), "email: admin@site.org\nhashed_password: SECRET\n", 'comptes export : compte existant intact');
-t_eq($r12['comptes']['crees'], 1, 'comptes export : 1 compte créé');
+t_eq($r12['comptes']['crees'], 2, 'comptes export : 2 comptes créés (1 actif, 1 désactivé)');
 $rap = file_get_contents(_DIR_TMP . 'sptg/' . $r12['rapport']);
-t_ok(strpos($rap, 'Sans Mail') !== false and strpos($rap, 'Mot de passe oublié') !== false, 'comptes export : rapport (ignorés + prérequis)', $rap);
+t_ok(strpos($rap, 'Sans Mail') !== false and strpos($rap, 'désactivé') !== false and strpos($rap, 'Mot de passe oublié') !== false, 'comptes export : rapport (désactivés + prérequis)', $rap);
 $page_c = glob("$dest_c/user/pages/*/*.md");
 $tout_pages = '';
 foreach (glob("$dest_c/user/pages/*/*.md") as $f) { $tout_pages .= file_get_contents($f); }
@@ -275,7 +276,7 @@ t_ok(strpos($tout_pages, 'marie@exemple.org') === false, 'comptes export : email
 if (!empty($r12['zip']) and class_exists('ZipArchive')) {
 	$z = new ZipArchive();
 	$z->open(_DIR_TMP . 'sptg/' . $r12['zip']);
-	t_ok($z->locateName('user/accounts/marie.yaml') !== false and $z->locateName('user/accounts/admin.yaml') === false, 'comptes export : zip avec les comptes créés, sans l\'admin existant');
+	t_ok($z->locateName('user/accounts/marie.yaml') !== false and $z->locateName('user/accounts/sm2.yaml') !== false and $z->locateName('user/accounts/admin.yaml') === false, 'comptes export : zip avec les comptes créés, sans l\'admin existant');
 }
 $r12b = sptg_exporter(array(
 	'export_name' => 'demo', 'dossier_destination' => $dest_c, 'objets' => array('article', 'rubrique'),
@@ -348,5 +349,119 @@ t_eq(count($r14['liens_site']), 1, 'liens : 1 lien absolu vers le site actuel');
 $rap14 = file_get_contents(_DIR_TMP . 'sptg/' . $r14['rapport']);
 t_ok(strpos($rap14, '## Logos') !== false and strpos($rap14, '**ABSENT**') !== false and strpos($rap14, 'png/rubon1.png') !== false, 'rapport : section Logos', $rap14);
 t_ok(strpos($rap14, "## Liens vers l'espace privé") !== false and strpos($rap14, '## Liens absolus vers le site SPIP actuel') !== false, 'rapport : liens privés et liens absolus', $rap14);
+
+// ------------------------------------------------ 15. Champs Extras
+$F_ART_X = $F_ART + array('langue_choisie' => 'varchar(3)', 'ville' => "varchar(255) NOT NULL DEFAULT ''", 'themes' => 'text', 'actif' => 'varchar(3)', 'note' => 'text');
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART_X, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'Actu')),
+		'spip_articles' => array(array_merge(art(10, 1, 'Avec extras'), array('langue_choisie' => 'non', 'ville' => 'Paris', 'themes' => 'a,b', 'actif' => 'on', 'note' => 'Une {{note}} ici'))),
+	),
+	'pipelines' => array('declarer_champs_extras' => array('spip_articles' => array(
+		array('saisie' => 'fieldset', 'options' => array('nom' => 'fs', 'label' => 'Infos'), 'saisies' => array(
+			array('saisie' => 'input', 'options' => array('nom' => 'ville', 'label' => 'Ville', 'obligatoire' => 'on', 'sql' => "varchar(255) NOT NULL DEFAULT ''")),
+			array('saisie' => 'checkbox', 'options' => array('nom' => 'themes', 'label' => 'Thèmes', 'datas' => "a|Alpha\nb|Bêta", 'sql' => 'text')),
+		)),
+		array('saisie' => 'oui_non', 'options' => array('nom' => 'actif', 'label' => 'Actif', 'sql' => 'varchar(3)')),
+		array('saisie' => 'textarea', 'options' => array('nom' => 'note', 'label' => 'Note', 'sql' => 'text')),
+	))),
+));
+sptg_extras_definitions(true);
+list($r15, $dest15) = lancer('extras', array('generer_theme' => true));
+$e15 = index($dest15, 'article', 10);
+$p15 = file_get_contents("$dest15/user/pages/{$e15['dossier']}/article.md");
+t_ok(preg_match('/^extras:\n(?:[ ]+.*\n)+/m', $p15) === 1, 'extras : bloc extras: dans l\'entête', $p15);
+t_ok(strpos($p15, 'ville: "Paris"') !== false or strpos($p15, 'ville: Paris') !== false, 'extras : valeur texte', $p15);
+t_ok(preg_match('/themes:\n\s+- "?a"?\n\s+- "?b"?/', $p15) === 1, 'extras : liste typée', $p15);
+t_ok(preg_match('/actif: true/', $p15) === 1, 'extras : booléen typé', $p15);
+$spip_blk = preg_match('/^spip:\n((?:[ ]+.*\n)+)/m', $p15, $mm) ? $mm[1] : '';
+t_ok($spip_blk !== '' and strpos($spip_blk, 'ville') === false and strpos($spip_blk, 'themes') === false, 'extras : absents du bloc spip:', $spip_blk);
+$bpf = glob("$dest15/user/themes/*/blueprints/article.yaml");
+$bp15 = $bpf ? file_get_contents($bpf[0]) : '';
+t_ok(strpos($bp15, 'header.extras.ville') !== false and strpos($bp15, 'Champs extras') !== false, 'extras : onglet blueprint', $bp15);
+t_ok(strpos($bp15, 'checkboxes') !== false and strpos($bp15, 'Alpha') !== false and strpos($bp15, 'required') !== false, 'extras : blueprint reprend type, options et obligatoire', $bp15);
+$twf = glob("$dest15/user/themes/*/templates/article.html.twig");
+$tw15 = $twf ? file_get_contents($twf[0]) : '';
+t_ok(strpos($tw15, '<!-- langue_choisie :') !== false and strpos($tw15, 'Langue choisie') === false, 'gabarits : langue_choisie en commentaire HTML (pas en liste visible)', $tw15);
+t_ok(strpos($tw15, 'page.content|trim is not empty') !== false, 'gabarits : corps vide toléré', $tw15);
+t_ok(strpos($tw15, 'spip-extras') !== false and strpos($tw15, 'e.ville') !== false and strpos($tw15, 'markdown') !== false, 'extras : template affiche les extras', $tw15);
+$rap15 = file_get_contents(_DIR_TMP . 'sptg/' . $r15['rapport']);
+t_ok(strpos($rap15, '## Champs extras') !== false and strpos($rap15, '`ville`') !== false, 'extras : rapport', $rap15);
+sptg_scenario(array());
+sptg_extras_definitions(true);
+
+// ------------------------------------------------ 16. pages rattachées aux comptes Grav ; page d'auteur accrochée à son compte
+$F_AUT = array('id_auteur' => 'bigint', 'nom' => 'text', 'bio' => 'text', 'email' => 'tinytext', 'login' => 'varchar(255)', 'statut' => 'varchar(10)', 'lang' => 'varchar(10)');
+$auteurs16 = array(
+	array('id_auteur' => 1, 'nom' => 'Marie Curie', 'login' => 'marie', 'email' => 'marie@exemple.org', 'statut' => '1comite', 'bio' => 'Physicienne', 'lang' => 'fr'),
+	array('id_auteur' => 2, 'nom' => 'Sans Mail', 'login' => 'sm', 'email' => '', 'statut' => '1comite', 'bio' => '', 'lang' => 'fr'),
+	array('id_auteur' => 3, 'nom' => 'Visiteur', 'login' => 'vis', 'email' => 'v@exemple.org', 'statut' => '6forum', 'bio' => '', 'lang' => 'fr'),
+);
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB, 'spip_auteurs' => $F_AUT),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'Actu')),
+		'spip_articles' => array(art(10, 1, 'Un article')),
+		'spip_auteurs' => $auteurs16,
+	),
+	'auteurs_join' => array(
+		array('objet' => 'article', 'id_objet' => 10, 'id_auteur' => 1, 'nom' => 'Marie Curie'),
+		array('objet' => 'article', 'id_objet' => 10, 'id_auteur' => 2, 'nom' => 'Sans Mail'),
+		array('objet' => 'article', 'id_objet' => 10, 'id_auteur' => 3, 'nom' => 'Visiteur'),
+	),
+));
+list($r16, $dest16) = lancer('auteurs', array('objets' => array('article', 'rubrique', 'auteur'), 'creer_comptes' => true, 'inclure_emails' => true));
+$e16 = index($dest16, 'article', 10);
+$p16 = file_get_contents("$dest16/user/pages/{$e16['dossier']}/article.md");
+t_ok(preg_match('/^auteurs:\n\s+- "?marie"?\n\s+- "?sm2"?\n/m', $p16) === 1, 'auteurs : articles rattachés aux identifiants de comptes', $p16);
+t_ok(strpos($p16, 'auteurs_sans_compte') !== false and strpos($p16, 'Visiteur') !== false, 'auteurs : auteur sans compte -> nom', $p16);
+t_ok(preg_match('/taxonomy:(?:\n[ ]+.*)*\n[ ]+auteur:\n\s+- "?marie"?/', $p16) === 1, 'auteurs : taxonomie auteur = identifiants de comptes', $p16);
+t_ok(strpos($p16, 'Marie Curie') === false, 'auteurs : le nom n\'est pas dupliqué dans la page de l\'article', $p16);
+$ea = index($dest16, 'auteur', 1);
+$pa = file_get_contents("$dest16/user/pages/{$ea['dossier']}/auteur.md");
+t_ok(strpos($pa, 'account: "marie"') !== false or strpos($pa, 'account: marie') !== false, 'auteurs : page d\'auteur accrochée à son compte', $pa);
+t_ok(strpos($pa, 'afficher_email: true') !== false, 'auteurs : afficher_email demandé', $pa);
+t_ok(strpos($pa, 'marie@exemple.org') === false, 'auteurs : email jamais écrit dans la page (lu dans le compte)', $pa);
+$twa = glob("$dest16/user/themes/*/templates/auteur.html.twig");
+t_ok($twa and strpos(file_get_contents($twa[0]), 'sptg_compte(page.header.account)') !== false, 'auteurs : template d\'auteur lit le compte');
+$tws = glob("$dest16/user/themes/*/templates/partials/auteurs.html.twig");
+t_ok($tws and strpos(file_get_contents($tws[0]), 'sptg_compte(a)') !== false, 'auteurs : partial des auteurs d\'une page');
+$php = glob("$dest16/user/themes/*/*.php");
+$php_all = '';
+foreach ($php as $f) { $php_all .= file_get_contents($f); }
+t_ok(strpos($php_all, "'sptg_compte'") !== false, 'auteurs : fonction Twig sptg_compte dans le thème');
+// re-export sur la même destination : rattachement par id, aucun compte dupliqué
+$nb_avant = count(glob("$dest16/user/accounts/*.yaml"));
+$r16b = sptg_exporter(array(
+	'export_name' => 'demo', 'dossier_destination' => $dest16, 'objets' => array('article', 'rubrique'),
+	'secteurs' => array(1, 2, 3), 'statuts' => array('publie'), 'mode_images' => 'partage', 'creer_comptes' => true, 'creer_zip' => false,
+));
+t_eq(count(glob("$dest16/user/accounts/*.yaml")), $nb_avant, 'auteurs : re-export sans duplication de comptes');
+$p16b = file_get_contents("$dest16/user/pages/{$e16['dossier']}/article.md");
+t_ok(preg_match('/^auteurs:\n\s+- "?marie"?\n\s+- "?sm2"?\n/m', $p16b) === 1, 'auteurs : re-export : mêmes comptes dans les pages', $p16b);
+sptg_scenario(array());
+
+// ------------------------------------------------ 17. liens « à l'ancienne » résolus, autres sites ignorés, page=… notifié
+sptg_scenario(array(
+	'fields' => array('spip_articles' => $F_ART, 'spip_rubriques' => $F_RUB),
+	'rows' => array(
+		'spip_rubriques' => array(rub(1, 0, 'Actu')),
+		'spip_articles' => array(
+			art(10, 1, 'Source', 'Voir <a href="spip.php?article11#haut">un</a>, <a href="/spip.php?page=article&amp;id_article=11">deux</a>, <a href="http://autre.org/spip.php?article11">autre site</a> et <a href="/spip.php?page=contact">contact</a>.'),
+			art(11, 1, 'Cible'),
+		),
+	),
+	'meta' => array('nom_site' => 'Mon site', 'descriptif_site' => 'Bienvenue', 'langue_site' => 'fr', 'adresse_site' => 'https://exemple.org'),
+));
+list($r17, $dest17) = lancer('anciens-liens');
+$e17 = index($dest17, 'article', 10);
+$p17 = file_get_contents("$dest17/user/pages/{$e17['dossier']}/article.md");
+t_ok(strpos($p17, '[un](/actu/cible#haut)') !== false and strpos($p17, '[deux](/actu/cible)') !== false, 'liens spip : résolus vers la route de l\'objet exporté', $p17);
+t_ok(strpos($p17, 'http://autre.org/spip.php?article11') !== false, 'liens spip : lien vers un autre site laissé intact', $p17);
+t_ok(strpos($p17, '(/spip.php?page=contact)') !== false, 'liens spip : page=contact laissé tel quel', $p17);
+$urls17 = array_column($r17['liens_bruts'], 'url');
+t_eq($urls17, array('/spip.php?page=contact'), 'liens spip : seul page=contact est notifié (autre site ignoré)');
+t_ok(empty($r17['erreur']), 'liens spip : non bloquant');
 
 t_fin('integration');

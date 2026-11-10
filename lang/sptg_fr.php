@@ -8,7 +8,7 @@ $GLOBALS[$GLOBALS['idx_lang']] = array(
 	'titre_page' => 'Exporter le site vers Grav',
 	'intro' => 'Cochez ce que vous souhaitez exporter. Le résultat est une archive ZIP contenant <code>user/pages</code>, un thème Grav (templates Twig + blueprints) généré d’après la structure de vos tables, et la configuration minimale du site.',
 
-	'aide_objet_auteur' => 'Crée une page publique par auteur et rattache les articles à leurs auteurs. N’a aucun effet sur les comptes de rédacteurs Grav, créés par l’option plus bas, indépendante de cette case.',
+	'aide_objet_auteur' => 'Crée une page publique par auteur, accrochée à son compte Grav (nom et, si la case email est cochée, adresse lus dans le compte). Le rattachement des articles à leurs auteurs (comptes) se fait dans tous les cas ; les comptes eux-mêmes dépendent de l’option plus bas.',
 	'legende_objets' => 'Types d’objets à exporter',
 	'aide_objets' => 'Les objets ajoutés par des plugins (brèves, lexique…) sont détectés automatiquement d’après la déclaration de leurs tables.',
 	'objet_mot' => 'Mots-clés (exportés comme taxonomies Grav)',
@@ -33,7 +33,7 @@ $GLOBALS[$GLOBALS['idx_lang']] = array(
 	'option_installer_grav' => 'Installer la dernière version de Grav à cet emplacement',
 	'aide_installer_grav' => 'Sans effet si Grav est déjà à jour. Si Grav est présent et plus ancien (même version majeure), une mise à jour est lancée (bin/gpm selfupgrade) ; sinon la commande à exécuter est indiquée. Nécessite l’accès réseau du serveur.',
 	'option_creer_comptes' => 'Créer un compte de rédacteur Grav (admin2) pour chaque auteur',
-	'aide_creer_comptes' => 'Administrateurs et rédacteurs SPIP ayant une adresse email valide et unique. Comptes sans mot de passe : à la première connexion, l’auteur utilise « Mot de passe oublié » avec l’adresse enregistrée dans SPIP (jamais affichée ni écrite dans les pages). Droits : les administrateurs deviennent super-administrateurs de Grav ; les rédacteurs (et administrateurs restreints) ont la connexion, les pages et les médias en lecture/écriture, rien d’autre. Les comptes existants ne sont jamais modifiés. Nécessite les plugins Grav login, email, api et admin2 et un expéditeur email configuré.',
+	'aide_creer_comptes' => 'Un compte par administrateur ou rédacteur SPIP, auquel les pages sont rattachées. Adresse email valide et unique : compte actif sans mot de passe (première connexion par « Mot de passe oublié » avec l’adresse SPIP, jamais affichée ni écrite dans les pages). Sinon : compte désactivé, sans email, à compléter dans admin2. Administrateurs = super-administrateurs de Grav ; rédacteurs et administrateurs restreints : pages et médias en lecture/écriture. Les comptes existants ne sont jamais modifiés. Nécessite les plugins Grav login, email, api et admin2 et un expéditeur email configuré.',
 	'option_liens_stables' => 'Liens internes stables (idx:type/id)',
 	'aide_liens_stables' => 'Les liens entre pages sont écrits « idx:article/12 » et résolus à l’affichage par le thème : déplacer ou renommer une page dans Grav ne casse plus les liens. Nécessite les helpers du thème : régénérés avec le thème, ou déjà présents dans le thème réutilisé (contrôlés ; sinon routes absolues et un avertissement dans le rapport).',
 	'legende_urls' => 'URL et redirections',

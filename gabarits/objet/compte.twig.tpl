@@ -1,0 +1,2 @@
+	{% set compte = page.header.account ? sptg_compte(page.header.account) : null %}
+	{% if compte %}<p class="spip-compte"><span class="spip-compte-nom">{{ compte.fullname|e }}</span>{% if compte.title %} <span class="spip-compte-titre">({{ compte.title|e }})</span>{% endif %}{% if page.header.afficher_email and compte.email %} — <a href="mailto:{{ compte.email|e('html_attr') }}">{{ compte.email|e }}</a>{% endif %}</p>{% endif %}

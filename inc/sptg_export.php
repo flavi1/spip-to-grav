@@ -23,6 +23,7 @@ include_spip('inc/sptg_langues');
 include_spip('inc/sptg_grav_install');
 include_spip('inc/sptg_comptes');
 include_spip('inc/sptg_logos');
+include_spip('inc/sptg_extras');
 
 // ---------------------------------------------------------------- utilitaires
 
@@ -233,6 +234,69 @@ function sptg_liens_stables($html, array $inverse, $prefixe = '') {
 		},
 		$html
 	);
+}
+
+/** Hôte (sans « www. », en minuscules) du site SPIP, d'après la meta adresse_site ; '' si inconnu */
+function sptg_hote_site() {
+	$h = !empty($GLOBALS['meta']['adresse_site']) ? parse_url($GLOBALS['meta']['adresse_site'], PHP_URL_HOST) : '';
+	return $h ? preg_replace('/^www\./', '', strtolower($h)) : '';
+}
+
+/**
+ * Objet désigné par une URL SPIP interne, quelle que soit sa forme :
+ * `spip.php?article12`, `spip.php?page=article&id_article=12`, `?id_article=12`, `article.php3?id_article=12`,
+ * `/article12`, `/article12.html`, avec ou sans le domaine du site. Une URL d'un autre domaine, ou une URL de
+ * page sans objet (`spip.php?page=contact`), ne désigne aucun objet.
+ *
+ * @return array|null [type, id, ancre]
+ */
+function sptg_url_vers_objet($url, $hote_site = '') {
+	$url = html_entity_decode((string) $url);
+	$p = parse_url($url);
+	if ($p === false) {
+		return null;
+	}
+	if (!empty($p['host'])) {
+		if ($hote_site === '' or preg_replace('/^www\./', '', strtolower($p['host'])) !== $hote_site) {
+			return null; // un autre site
+		}
+	} elseif (!empty($p['scheme'])) {
+		return null;
+	}
+	$chemin = isset($p['path']) ? $p['path'] : '';
+	$q = isset($p['query']) ? $p['query'] : '';
+	$ancre = isset($p['fragment']) && $p['fragment'] !== '' ? '#' . $p['fragment'] : '';
+	$types = 'article|rubrique|breve|mot|auteur|site|syndic';
+	$base = basename($chemin);
+
+	if ($q !== '' and ($base === 'spip.php' or $base === '' or $base === 'index.php')) {
+		if (preg_match('/^(' . $types . '|[a-z_]+?)(\d+)(?:&|$)/', $q, $m)) {
+			return array($m[1], (int) $m[2], $ancre);
+		}
+		parse_str($q, $v);
+		if (!empty($v['page']) and preg_match('/^[a-z_]+$/', $v['page']) and isset($v['id_' . $v['page']]) and ctype_digit((string) $v['id_' . $v['page']])) {
+			return array($v['page'], (int) $v['id_' . $v['page']], $ancre);
+		}
+		if (empty($v['page'])) {
+			foreach ($v as $k => $val) {
+				if (preg_match('/^id_([a-z_]+)$/', $k, $m) and ctype_digit((string) $val)) {
+					return array($m[1], (int) $val, $ancre);
+				}
+			}
+		}
+		return null;
+	}
+	if ($q !== '' and preg_match('/^(' . $types . ')\.php3?$/', $base, $m)) {
+		parse_str($q, $v);
+		if (isset($v['id_' . $m[1]]) and ctype_digit((string) $v['id_' . $m[1]])) {
+			return array($m[1], (int) $v['id_' . $m[1]], $ancre);
+		}
+		return null;
+	}
+	if ($q === '' and preg_match('/^(' . $types . ')(\d+)(?:\.html)?$/', $base, $m)) {
+		return array($m[1], (int) $m[2], $ancre);
+	}
+	return null;
 }
 
 /** Remplace les liens internes SPIP ([->art12]) par la route Grav correspondante (préfixée par la langue en mode i18n) */
@@ -469,6 +533,23 @@ function sptg_rendre_texte_interne($raw, array &$ctx, $champ) {
 		$html
 	);
 
+	// liens « à l'ancienne » vers un objet du site (spip.php?article12, article.php3?id_article=12, /article12.html…)
+	$hote_site = sptg_hote_site();
+	$html = preg_replace_callback(
+		'~\bhref=(["\'])([^"\']+)\1~i',
+		function ($m) use (&$ctx, $hote_site) {
+			if (strpos($m[2], '#') === 0 or stripos($m[2], 'mailto:') === 0) {
+				return $m[0];
+			}
+			$o = sptg_url_vers_objet($m[2], $hote_site);
+			if ($o and isset($ctx['routes'][$o[0]][$o[1]])) {
+				return 'href=' . $m[1] . (isset($ctx['prefixe']) ? $ctx['prefixe'] : '') . $ctx['routes'][$o[0]][$o[1]] . $o[2] . $m[1];
+			}
+			return $m[0];
+		},
+		$html
+	);
+
 	// liens vers l'espace privé (ex. glossaire : ecrire/?exec=definition&id_definition=1) : propre() les produit
 	// quand l'export tourne dans ecrire/ ; remplacés par la route de l'objet exporté, sinon signalés
 	$html = preg_replace_callback(
@@ -500,6 +581,11 @@ function sptg_rendre_texte_interne($raw, array &$ctx, $champ) {
 	// liens internes non résolus (URL SPIP « à paramètres »)
 	if (preg_match_all('~href=["\']([^"\']*(?:spip\.php\?|[?&]id_(?:article|rubrique|breve|mot|auteur)=)[^"\']*)["\']~i', $html, $mm)) {
 		foreach ($mm[1] as $u) {
+			// un autre site (ex. http://autre.org/spip.php?article1) n'est pas notre affaire
+			$hote_u = parse_url(html_entity_decode($u), PHP_URL_HOST);
+			if ($hote_u and preg_replace('/^www\./', '', strtolower($hote_u)) !== $hote_site) {
+				continue;
+			}
 			$ctx['liens_bruts'][] = array('page' => $ctx['route'], 'champ' => $champ, 'url' => html_entity_decode($u));
 		}
 	}
@@ -566,7 +652,7 @@ function sptg_exporter(array $o) {
 		'grav' => '', 'moteur_redirections' => '', 'schema_urls' => $o['schema_urls'],
 		'liens_stables' => '', 'theme_helpers' => '', 'media_types' => array(), 'comptes' => array(),
 		'logos' => array(), 'logos_nb' => array(), 'logos_survol' => 0,
-		'liens_prives' => array(), 'liens_site' => array(), 'alertes' => array(),
+		'liens_prives' => array(), 'liens_site' => array(), 'alertes' => array(), 'extras' => array(),
 	);
 
 	// ---- 1. Cible (et installation / mise à jour de Grav si demandée)
@@ -888,16 +974,29 @@ function sptg_exporter(array $o) {
 			$taxo_obj[$m['objet'] . ':' . $m['id_objet']][$cle][] = sptg_titre_propre($m['mot']);
 		}
 	}
+	// Rattachement des pages aux comptes Grav (identifiants), indépendant de l'export des pages d'auteurs.
+	// Les comptes sont planifiés avant l'écriture des pages ; sans création de comptes, seuls ceux qui existent
+	// déjà dans la destination sont utilisés.
+	$plan_comptes = sptg_comptes_planifier($racine);
+	$map_comptes = $o['creer_comptes'] ? $plan_comptes['map'] : array_diff($plan_comptes['map'], array_keys($plan_comptes['comptes']));
 	$auteurs_obj = array();
-	if (in_array('auteur', $types) and $cles_types) {
-		$taxonomies[] = 'auteur';
+	$auteurs_ext = array();
+	if ($cles_types) {
 		$q = sql_allfetsel(
-			'l.objet, l.id_objet, a.nom',
+			'l.objet, l.id_objet, a.id_auteur, a.nom',
 			'spip_auteurs_liens AS l INNER JOIN spip_auteurs AS a ON a.id_auteur=l.id_auteur',
-			array(sql_in('l.objet', $cles_types), sql_in('a.statut', array('0minirezo', '1comite')))
+			array(sql_in('l.objet', $cles_types), "a.statut!='5poubelle'")
 		) ?: array();
 		foreach ($q as $a) {
-			$auteurs_obj[$a['objet'] . ':' . $a['id_objet']][] = sptg_titre_propre($a['nom']);
+			$cle_a = $a['objet'] . ':' . $a['id_objet'];
+			if (isset($map_comptes[(int) $a['id_auteur']])) {
+				$auteurs_obj[$cle_a][] = $map_comptes[(int) $a['id_auteur']];
+			} else {
+				$auteurs_ext[$cle_a][] = sptg_titre_propre($a['nom']);
+			}
+		}
+		if ($auteurs_obj) {
+			$taxonomies[] = 'auteur';
 		}
 	}
 	$docs_obj = array();
@@ -1034,6 +1133,35 @@ function sptg_exporter(array $o) {
 				return $v !== null;
 			});
 
+			// champs extras (plugin Champs Extras) : bloc `extras:` de l'entête, valeurs typées
+			$extras = array();
+			$extras_html = array();
+			foreach (sptg_extras_champs($info) as $nom => $c) {
+				if (!isset($r[$nom]) or $r[$nom] === '') {
+					continue;
+				}
+				if ($c['kind'] == 'texte') {
+					$res = sptg_rendre_texte($r[$nom], $ctx, $nom);
+					$val = $res['val'];
+					if ($res['fmt'] == 'html') {
+						$extras_html[] = $nom;
+					}
+				} else {
+					$val = sptg_extras_valeur($r[$nom], $c);
+					if (is_string($val) and sptg_contient_multi($val) and function_exists('extraire_multi')) {
+						$val = extraire_multi($val, $lang_rendu);
+					}
+				}
+				if ($val !== null and $val !== '') {
+					$extras[$nom] = $val;
+				}
+			}
+			if (!isset($rapport['extras'][$type]) and sptg_extras_champs($info)) {
+				foreach (sptg_extras_champs($info) as $nom => $c) {
+					$rapport['extras'][$type][] = array('nom' => $nom, 'saisie' => $c['saisie'], 'label' => $c['label'], 'groupe' => $c['groupe']);
+				}
+			}
+
 			$publie = true;
 			if ($info['statut'] and isset($r[$info['statut']]) and $type != 'auteur') {
 				$publie = ($r[$info['statut']] === $info['publie']);
@@ -1090,9 +1218,26 @@ function sptg_exporter(array $o) {
 				$header['taxonomy'] = array_map('array_values', array_map('array_unique', $taxo_obj[$cle]));
 			}
 			if (!empty($auteurs_obj[$cle])) {
-				$header['taxonomy']['auteur'] = array_values(array_unique($auteurs_obj[$cle]));
+				$header['auteurs'] = array_values(array_unique($auteurs_obj[$cle]));
+				$header['taxonomy']['auteur'] = $header['auteurs'];
+			}
+			if (!empty($auteurs_ext[$cle])) {
+				$header['auteurs_sans_compte'] = array_values(array_unique($auteurs_ext[$cle]));
+			}
+			if ($type == 'auteur' and isset($map_comptes[$id])) {
+				// la page d'un auteur est accrochée à son compte : nom, intitulé et (si demandé) email sont lus dans le compte
+				$header['account'] = $map_comptes[$id];
+				if ($o['inclure_emails']) {
+					$header['afficher_email'] = true;
+				}
 			}
 			$header['spip'] = $spip;
+			if ($extras) {
+				$header['extras'] = $extras;
+				if ($extras_html) {
+					$header['extras_html'] = $extras_html;
+				}
+			}
 			if ($html_champs) {
 				$header['spip_html'] = $html_champs;
 			}
@@ -1232,9 +1377,10 @@ function sptg_exporter(array $o) {
 
 	// ---- comptes des auteurs (rédacteurs admin2, sans mot de passe)
 	if ($o['creer_comptes']) {
-		$c = sptg_comptes_exporter($racine);
+		$c = sptg_comptes_exporter($racine, $plan_comptes);
 		$c['resume'] = 'Comptes Grav : ' . $c['crees'] . ' créé(s)'
-			. ($c['ignores'] ? ', ' . count($c['ignores']) . ' auteur(s) ignoré(s) (voir le rapport)' : '') . '.';
+			. ($c['desactives'] ? ', dont ' . count($c['desactives']) . ' désactivé(s) faute d\'email exploitable (voir le rapport)' : '')
+			. ($c['rattaches'] ? ' ; ' . count($c['rattaches']) . ' auteur(s) rattaché(s) à un compte existant' : '') . '.';
 		$rapport['comptes'] = $c;
 	}
 
@@ -1324,6 +1470,17 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "- $d\n";
 	}
 
+	// champs extras
+	if (!empty($r['extras'])) {
+		$t .= "\n## Champs extras (plugin Champs Extras)\n\n";
+		$t .= "Écrits dans l'entête de chaque page sous `extras:` ; le blueprint reprend libellé, type de saisie, valeurs proposées, obligatoire, défaut et aide.\n\n";
+		foreach ($r['extras'] as $ty => $liste) {
+			foreach ($liste as $e) {
+				$t .= "- " . $ty . " : `" . $e['nom'] . "` — " . $e['label'] . " (saisie " . $e['saisie'] . ($e['groupe'] !== '' ? ', groupe « ' . $e['groupe'] . ' »' : '') . ")\n";
+			}
+		}
+	}
+
 	// logos
 	$t .= "\n## Logos\n\n";
 	foreach ($r['logos_nb'] as $ty => $n) {
@@ -1340,10 +1497,13 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 	if (!empty($r['comptes'])) {
 		$t .= "\n## Comptes des auteurs\n\n- Prérequis : " . $r['comptes']['prerequis'] . "\n";
 		foreach ($r['comptes']['liste'] as $u => $c) {
-			$t .= "- Créé : `" . $u . "` — " . $c['nom'] . " (" . $c['intitule'] . ($c['super'] ? ', super-administrateur' : '') . ")\n";
+			$t .= "- Créé : `" . $u . "` — " . $c['nom'] . " (" . $c['intitule'] . ($c['super'] ? ', super-administrateur' : '') . ($c['etat'] == 'disabled' ? ', **désactivé**' : '') . ")\n";
 		}
-		foreach ($r['comptes']['ignores'] as $i) {
-			$t .= "- Ignoré : auteur " . $i['id_auteur'] . " (" . $i['nom'] . ") — " . $i['raison'] . "\n";
+		foreach ($r['comptes']['desactives'] as $i) {
+			$t .= "- Compte désactivé, sans email : auteur " . $i['id_auteur'] . " (" . $i['nom'] . ") → `" . $i['compte'] . "` — " . $i['raison'] . ". Il porte l'attribution des pages ; renseignez l'email dans admin2 puis activez le compte.\n";
+		}
+		foreach ($r['comptes']['rattaches'] as $i) {
+			$t .= "- Rattaché à un compte existant : auteur " . $i['id_auteur'] . " (" . $i['nom'] . ") → `" . $i['compte'] . "` — " . $i['raison'] . "\n";
 		}
 	}
 	if ($r['doublons']) {
@@ -1394,7 +1554,8 @@ function sptg_rapport_texte(array $r, array $o, $snippet) {
 		$t .= "Markdown produit :\n```\n" . $e['markdown'] . "\n```\nSource SPIP :\n```\n" . $e['source'] . "\n```\n\n";
 	}
 
-	$t .= "## Liens internes non résolus (" . count($r['liens_bruts']) . ")\n\n";
+	$t .= "## Liens SPIP laissés tels quels (" . count($r['liens_bruts']) . ")\n\n";
+	$t .= "URL de page sans objet identifiable (par ex. `spip.php?page=contact`) ou d'un objet non exporté : à traiter à la main, sans effet sur l'export ni sur le zip. Les liens vers d'autres sites sont ignorés.\n\n";
 	foreach ($r['liens_bruts'] as $l) {
 		$t .= "- " . $l['page'] . " / " . $l['champ'] . " : " . $l['url'] . "\n";
 	}

@@ -91,15 +91,27 @@ Vérifié dans le code de Grav : le traitement des liens de Markdown laisse inta
 
 **Thème réutilisé.** Le thème est toujours généré une première fois ; ensuite on peut ne régénérer que le contenu. Le plugin ne modifie alors jamais le thème existant, mais le contrôle : il lit `const API` dans son `sptg_runtime.php` et cherche `sptgRuntime` dans son PHP principal. Helpers compatibles : liens stables et résolveur d'anciennes URL actifs. Absents, anciens (thème issu d'une vieille version du plugin) ou retirés : routes absolues à la place, redirections par `site.yaml`, et un avertissement dans le rapport qui dit quoi faire (régénérer le thème).
 
-## Auteurs : comptes de rédacteurs dans admin2
+## Auteurs : comptes Grav (admin2) et rattachement des pages
 
-Option « Créer un compte de rédacteur Grav (admin2) pour chaque auteur » (cochée par défaut). Pour chaque administrateur ou rédacteur SPIP ayant une adresse email valide et unique, l'export écrit `user/accounts/<identifiant>.yaml` : nom, intitulé, email, `state: enabled`, et les droits `site.login`, `api.access`, `api.pages` (lecture/écriture), `api.media` (lecture/écriture). Les **administrateurs SPIP deviennent super-administrateurs de Grav** (`admin.super`, `api.super`, `admin.login`) ; les administrateurs restreints à des rubriques, qui n'ont pas la main sur tout le site, reçoivent les droits de rédacteur, qui n'incluent aucun droit de configuration, de plugins, d'utilisateurs ni de super-administration.
+Option « Créer un compte de rédacteur Grav (admin2) pour chaque auteur » (cochée par défaut). Chaque administrateur ou rédacteur SPIP a un compte `user/accounts/<identifiant>.yaml` (nom, intitulé, `state`, droits, `spip_auteur: <id>`) ; les pages lui sont rattachées par cet identifiant, que le type « Auteurs » soit exporté ou non :
 
-Les comptes n'ont **pas de mot de passe**. À la première connexion, l'auteur clique sur « Mot de passe oublié » (admin2 ou page de connexion du site) et saisit l'adresse enregistrée dans SPIP : le plugin `login` retrouve le compte par cette adresse, pose un jeton valable 24 h et envoie le lien de création du mot de passe (vérifié dans le code de `login` : `Controller::taskForgot` / `taskReset`, et dans celui de `api` : `POST /auth/forgot-password`, `/auth/reset-password`). La réponse est toujours neutre : personne ne peut découvrir quelles adresses ont un compte. L'email n'est écrit que dans le compte (`user/accounts/` n'est pas servi), jamais dans les pages, même avec « inclure les emails ».
-
-Règles : les comptes existants ne sont jamais modifiés (ni l'administrateur créé à l'installation de Grav) ; l'archive zip ne contient que les comptes créés par l'export ; un auteur sans email valide, ou dont l'email est déjà pris, est listé dans le rapport (la réinitialisation retrouve le compte par l'email, deux comptes ne peuvent donc pas le partager) ; identifiants dérivés du login SPIP (`[a-z0-9_-]{3,16}`, suffixés si doublon). Visiteurs, « nouveaux » et auteurs à la poubelle n'ont pas de compte.
+- **Pages** : entête `auteurs: [identifiants de comptes]` et taxonomie `auteur` (mêmes identifiants) ; `auteurs_sans_compte` pour un auteur sans compte (visiteur…). Le thème affiche le nom lu dans le compte (`sptg_compte()`).
+- **Page d'un auteur** (type « Auteurs », décoché par défaut) : entête `account: <identifiant>` ; nom, intitulé et, si « inclure les emails » est coché (`afficher_email: true`), l'adresse sont lus dans le compte. L'email n'est jamais écrit dans la page.
+- **Droits** : les administrateurs SPIP deviennent super-administrateurs de Grav (`admin.super`, `api.super`, `admin.login`) ; les administrateurs restreints à des rubriques et les rédacteurs ont la connexion et les pages/médias en lecture/écriture (`api.access`, `api.pages`, `api.media`), rien d'autre.
+- **Première connexion** : les comptes n'ont pas de mot de passe. L'auteur clique sur « Mot de passe oublié » et saisit l'adresse enregistrée dans SPIP : le plugin `login` retrouve le compte par cette adresse, pose un jeton valable 24 h et envoie le lien (code lu : `Controller::taskForgot` / `taskReset` de `login`, `POST /auth/forgot-password` de `api`). La réponse est toujours neutre : personne ne peut découvrir quelles adresses ont un compte.
+- **Sans email exploitable** (absent, invalide ou déjà pris) : compte créé **désactivé** et sans email ; il porte l'attribution. À compléter dans admin2 puis activer.
+- **Existants** : un compte déjà présent n'est jamais modifié ; un auteur est rattaché au compte qui porte son `spip_auteur` (export précédent) ou sa même adresse email. Un nouvel export ne crée donc pas de doublons. Le zip ne contient que les comptes créés.
+- Visiteurs, « nouveaux » et auteurs à la poubelle n'ont pas de compte.
 
 Prérequis côté Grav (rappelés dans le rapport) : plugins `login`, `email`, `api`, `admin2`, un expéditeur configuré (`plugins.email.from` et moteur d'envoi), idéalement `plugins.login.site_host`. Sans envoi d'email, le lien ne part pas : l'administrateur peut alors définir le mot de passe lui-même.
+
+## Champs Extras (plugin SPIP « Champs Extras »)
+
+Sources lues : plugins `cextras` et `iextras` 4.3. Chaque champ extra est une colonne SQL ajoutée à la table de l'objet ; sa définition (saisie : type, libellé, explication, obligatoire, défaut, valeurs proposées, fieldset) vient du pipeline `declarer_champs_extras` (qui inclut les champs créés avec l'interface). L'export :
+
+- écrit les valeurs dans l'entête de chaque page sous `extras:` (et non plus dans `spip:`), typées : liste pour les cases à cocher et sélections multiples (stockées « a,b » dans SPIP), booléen pour oui/non, nombre, date ; texte long converti comme les autres textes (`extras_html` s'il reste en HTML) ;
+- complète le blueprint de chaque type avec un onglet « Champs extras » (`header.extras.<nom>`) : libellé, type de champ (text, textarea, select, radio, checkboxes, toggle, datetime, number, email, url), options (`datas`), obligatoire, défaut, aide, séparateurs par fieldset ;
+- affiche les valeurs dans le template du type ; liste les champs dans le rapport.
 
 ## Rapport d'export
 

@@ -9,10 +9,21 @@ if (!defined('_ECRIRE_INC_VERSION')) {
 
 include_spip('inc/sptg_introspection');
 include_spip('inc/sptg_yaml');
+include_spip('inc/sptg_extras');
 
 /** Champs « techniques » à ne pas afficher dans les templates */
 function sptg_champs_masques_affichage() {
 	return array('lang', 'statut', 'url_propre', 'virtuel', 'date_modif', 'date_redac', 'date_creation', 'composition', 'composition_lock', 'rang', 'profondeur');
+}
+
+/** Texte libre sûr dans un template Twig : HTML échappé, accolades neutralisées (pas de {{ ni {% injectés) */
+function sptg_twig_texte($t) {
+	return str_replace(array('{', '}'), array('&#123;', '&#125;'), htmlspecialchars((string) $t, ENT_QUOTES, 'UTF-8'));
+}
+
+/** Champs techniques : jamais affichés, laissés en commentaire HTML dans la page (visibles dans le code source) */
+function sptg_champs_commentaire() {
+	return array('langue_choisie');
 }
 
 function sptg_label_champ($nom) {
@@ -57,16 +68,21 @@ function sptg_blueprint_objet(array $info, $emails) {
 	foreach (sptg_champs_exportables($info, $emails) as $nom => $c) {
 		$champs['header.spip.' . $nom] = sptg_champ_blueprint($nom, $c);
 	}
+	$onglets = array('spip' => array(
+		'type' => 'tab',
+		'title' => 'SPIP : ' . $info['label'],
+		'fields' => $champs,
+	));
+	$extras = sptg_extras_blueprint_champs($info);
+	if ($extras) {
+		$onglets['extras'] = array('type' => 'tab', 'title' => 'Champs extras', 'fields' => $extras);
+	}
 	return array(
 		'title' => $info['label'] . ' (SPIP)',
 		'@extends' => array('type' => 'default', 'context' => 'blueprints://pages'),
 		'form' => array('fields' => array('tabs' => array(
 			'type' => 'tabs',
-			'fields' => array('spip' => array(
-				'type' => 'tab',
-				'title' => 'SPIP : ' . $info['label'],
-				'fields' => $champs,
-			)),
+			'fields' => $onglets,
 		))),
 	);
 }
@@ -170,7 +186,12 @@ function sptg_twig_objet(array $info, $emails) {
 	$lead = array();
 	$tail = array();
 	$dl = array();
+	$comm = array();
 	foreach ($champs as $nom => $c) {
+		if (in_array($nom, sptg_champs_commentaire())) {
+			$comm[] = $nom;
+			continue;
+		}
 		if (in_array($nom, $masques) or strpos($nom, 'id_') === 0) {
 			continue;
 		}
@@ -211,11 +232,29 @@ function sptg_twig_objet(array $info, $emails) {
 		}
 		$liste = sptg_gabarit('objet/liste_champs.twig', array('LIGNES' => implode("\n", $lignes)));
 	}
+	$extras = '';
+	$lignes_extras = array();
+	foreach (sptg_extras_champs($info) as $n => $c) {
+		$valeur = $c['kind'] == 'texte'
+			? sptg_gabarit('objet/valeur_extra_texte.twig', array('NOM' => $n))
+			: sptg_gabarit('objet/valeur_extra.twig', array('NOM' => $n));
+		$lignes_extras[] = rtrim(sptg_gabarit('objet/ligne_extra.twig', array(
+			'NOM' => $n, 'LABEL' => sptg_twig_texte($c['label']), 'VALEUR' => trim($valeur),
+		)), "\n");
+	}
+	if ($lignes_extras) {
+		$extras = sptg_gabarit('objet/liste_extras.twig', array('LIGNES' => implode("\n", $lignes_extras)));
+	}
 	return sptg_gabarit('objet/objet.html.twig', array(
 		'TYPE' => $info['type'],
+		'COMPTE' => $info['type'] == 'auteur' ? sptg_gabarit('objet/compte.twig', array()) : '',
 		'CHAMPS_TETE' => $bloc_texte($lead),
 		'CHAMPS_QUEUE' => $bloc_texte($tail),
 		'LISTE_CHAMPS' => $liste,
+		'EXTRAS' => $extras,
+		'COMMENTAIRES' => implode("\n", array_map(function ($n) {
+			return rtrim(sptg_gabarit('objet/commentaire.twig', array('NOM' => $n)), "\n");
+		}, $comm)),
 		'ENFANTS' => $info['type'] == 'rubrique' ? sptg_gabarit('objet/enfants.twig', array()) : '',
 	));
 }

@@ -192,6 +192,9 @@ function formulaires_exporter_grav_traiter_dist() {
 	if (!empty($r['comptes'])) {
 		$msg .= '<br />' . entites_html($r['comptes']['resume']);
 	}
+	if (!empty($r['liens_bruts'])) {
+		$msg .= '<br />' . count($r['liens_bruts']) . ' lien(s) SPIP laissé(s) tel(s) quel(s), à vérifier (voir le rapport ; non bloquant).';
+	}
 	if ($r['doublons']) {
 		$msg .= '<br />' . count($r['doublons']) . ' route(s) en double suffixée(s) (voir le rapport).';
 	}

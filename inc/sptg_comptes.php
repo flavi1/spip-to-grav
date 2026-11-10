@@ -3,17 +3,19 @@
  * Auteurs SPIP -> comptes Grav (rédacteurs d'admin2).
  *
  * Un compte est écrit dans `user/accounts/<identifiant>.yaml` pour chaque auteur « administrateur » ou
- * « rédacteur » SPIP ayant une adresse email valide et unique. Le compte n'a PAS de mot de passe : à la
- * première connexion, l'auteur utilise « Mot de passe oublié » sur la page de connexion d'admin2 (ou du site)
- * avec l'adresse enregistrée dans SPIP. Le plugin `login` retrouve le compte par cette adresse, pose un jeton
- * valable 24 h et envoie le lien (POST /auth/forgot-password du plugin `api` ; Controller::taskForgot de `login`) ;
- * la réponse est toujours neutre, l'adresse n'est donc divulguée à personne.
+ * « rédacteur » SPIP, et les pages (articles, etc.) et la page d'un auteur lui sont rattachées par cet identifiant.
+ *  - Email valide et unique : compte actif, SANS mot de passe. À la première connexion, l'auteur utilise
+ *    « Mot de passe oublié » avec l'adresse enregistrée dans SPIP : le plugin `login` retrouve le compte par cette
+ *    adresse, pose un jeton valable 24 h et envoie le lien (POST /auth/forgot-password du plugin `api` ;
+ *    Controller::taskForgot de `login`) ; la réponse est toujours neutre, l'adresse n'est donc divulguée à personne.
+ *  - Sinon : compte désactivé et sans email, qui ne sert qu'à porter l'attribution des pages.
  *
- * L'email n'est écrit que dans le compte (`user/accounts/` n'est pas servi par Grav), jamais dans les pages,
- * quelle que soit l'option « inclure les emails ».
+ * L'email n'est écrit que dans le compte (`user/accounts/` n'est pas servi par Grav), jamais dans les pages ;
+ * le thème le lit dans le compte quand on demande de l'afficher (page d'auteur, option « inclure les emails »).
+ * Les comptes portent `spip_auteur: <id>` : un nouvel export retrouve ses comptes et n'en crée pas de doublons.
  *
- * Prérequis côté Grav, signalés dans le rapport : plugins `login`, `email`, `api` et `admin2`, et un expéditeur
- * email configuré (`plugins.email.from` + moteur d'envoi).
+ * Prérequis côté Grav, signalés dans le rapport : plugins `login`, `email`, `api` et `admin2`, et un expéditeur email
+ * configuré (`plugins.email.from` + moteur d'envoi).
  */
 if (!defined('_ECRIRE_INC_VERSION')) {
 	return;
@@ -83,17 +85,31 @@ function sptg_compte_identifiant_libre($base, array $pris) {
 /**
  * Construit les comptes à écrire (fonction pure, testable).
  *
- * @param array $auteurs  lignes spip_auteurs : id_auteur, nom, login, email, statut
+ * Chaque administrateur / rédacteur SPIP a un compte, pour que les pages puissent leur être rattachées :
+ *  - adresse email valide et unique : compte actif, sans mot de passe (première connexion par « mot de passe oublié ») ;
+ *  - sinon : compte DÉSACTIVÉ et sans email (il porte l'attribution des pages ; à compléter puis activer dans admin2) ;
+ *  - un compte déjà présent dans la destination n'est jamais modifié : l'auteur lui est rattaché s'il a déjà été créé
+ *    par un export précédent (clé `spip_auteur`) ou s'il a la même adresse email.
+ *
+ * @param array $auteurs  lignes spip_auteurs : id_auteur, nom, login, email, statut[, restreint]
  * @param array $existants identifiants déjà présents dans user/accounts/ (nom => true)
- * @param array $emails_existants emails déjà présents, en minuscules (email => true)
- * @return array ['comptes' => identifiant => données, 'ignores' => [['id_auteur','nom','raison']]]
+ * @param array $emails_existants emails des comptes présents, en minuscules (email => identifiant)
+ * @param array $par_id comptes créés par un export précédent (id_auteur => identifiant)
+ * @return array [
+ *   'comptes'    => identifiant => données à écrire,
+ *   'map'        => id_auteur => identifiant (tous les auteurs rattachables),
+ *   'rattaches'  => [['id_auteur','nom','compte','raison']] auteurs rattachés à un compte existant,
+ *   'desactives' => [['id_auteur','nom','compte','raison']] comptes créés désactivés,
+ * ]
  */
-function sptg_comptes_construire(array $auteurs, array $existants = array(), array $emails_existants = array()) {
+function sptg_comptes_construire(array $auteurs, array $existants = array(), array $emails_existants = array(), array $par_id = array()) {
 	$statuts = sptg_comptes_statuts();
 	$comptes = array();
-	$ignores = array();
+	$map = array();
+	$rattaches = array();
+	$desactives = array();
 	$pris = $existants;
-	$emails = $emails_existants;
+	$emails_crees = array();
 
 	usort($auteurs, function ($a, $b) {
 		return (int) $a['id_auteur'] - (int) $b['id_auteur'];
@@ -101,36 +117,51 @@ function sptg_comptes_construire(array $auteurs, array $existants = array(), arr
 	foreach ($auteurs as $a) {
 		$id = (int) $a['id_auteur'];
 		$nom = trim((string) $a['nom']);
-		$ignorer = function ($raison) use (&$ignores, $id, $nom) {
-			$ignores[] = array('id_auteur' => $id, 'nom' => $nom, 'raison' => $raison);
-		};
 		if (!isset($statuts[$a['statut']])) {
 			continue;
 		}
-		$email = trim((string) $a['email']);
-		if ($email === '' or !filter_var($email, FILTER_VALIDATE_EMAIL)) {
-			$ignorer('pas d\'adresse email valide');
+		if (isset($par_id[$id])) {
+			$map[$id] = $par_id[$id];
 			continue;
 		}
+		$email = trim((string) $a['email']);
+		$valide = $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL);
 		$cle_email = strtolower($email);
-		if (isset($emails[$cle_email])) {
-			// « mot de passe oublié » retrouve le compte par l'email : deux comptes ne peuvent pas le partager
-			$ignorer('adresse email déjà utilisée par un autre compte');
+		if ($valide and isset($emails_existants[$cle_email]) and is_string($emails_existants[$cle_email])) {
+			$map[$id] = $emails_existants[$cle_email];
+			$rattaches[] = array('id_auteur' => $id, 'nom' => $nom, 'compte' => $emails_existants[$cle_email], 'raison' => 'même adresse email que ce compte existant');
 			continue;
+		}
+		$actif = $valide;
+		$raison = '';
+		if (!$valide) {
+			$raison = 'pas d\'adresse email valide';
+		} elseif (isset($emails_existants[$cle_email]) or isset($emails_crees[$cle_email])) {
+			// « mot de passe oublié » retrouve le compte par l'email : deux comptes ne peuvent pas le partager
+			$actif = false;
+			$raison = 'adresse email déjà utilisée par un autre compte';
 		}
 		$base = sptg_compte_identifiant($a['login'] !== '' && $a['login'] !== null ? $a['login'] : $nom, $id);
 		$u = sptg_compte_identifiant_libre($base, $pris);
 		$pris[$u] = true;
-		$emails[$cle_email] = true;
-		$comptes[$u] = array(
-			'email' => $email,
+		$compte = array();
+		if ($actif) {
+			$emails_crees[$cle_email] = $u;
+			$compte['email'] = $email;
+		} else {
+			$desactives[] = array('id_auteur' => $id, 'nom' => $nom, 'compte' => $u, 'raison' => $raison);
+		}
+		$compte += array(
 			'fullname' => $nom !== '' ? $nom : $u,
 			'title' => $statuts[$a['statut']] . (($a['statut'] === '0minirezo' and !empty($a['restreint'])) ? ' restreint' : ''),
-			'state' => 'enabled',
+			'state' => $actif ? 'enabled' : 'disabled',
+			'spip_auteur' => $id,
 			'access' => ($a['statut'] === '0minirezo' and empty($a['restreint'])) ? sptg_comptes_acces_admin() : sptg_comptes_acces(),
 		);
+		$comptes[$u] = $compte;
+		$map[$id] = $u;
 	}
-	return array('comptes' => $comptes, 'ignores' => $ignores);
+	return array('comptes' => $comptes, 'map' => $map, 'rattaches' => $rattaches, 'desactives' => $desactives);
 }
 
 /**
@@ -153,40 +184,59 @@ function sptg_comptes_lire() {
 	return $auteurs;
 }
 
-/** Comptes déjà présents dans la destination : [identifiants => true, emails en minuscules => true] */
+/**
+ * Comptes déjà présents dans la destination.
+ *
+ * @return array [identifiants => true, emails en minuscules => identifiant, id_auteur SPIP => identifiant]
+ */
 function sptg_comptes_existants($racine) {
 	$ident = array();
 	$emails = array();
+	$par_id = array();
 	foreach ((array) glob(rtrim($racine, '/') . '/user/accounts/*.yaml') as $f) {
-		$ident[basename($f, '.yaml')] = true;
-		if (preg_match('/^email:\s*["\']?([^"\'\r\n#]+?)["\']?\s*$/mi', (string) @file_get_contents($f), $m)) {
-			$emails[strtolower(trim($m[1]))] = true;
+		$u = basename($f, '.yaml');
+		$contenu = (string) @file_get_contents($f);
+		$ident[$u] = true;
+		if (preg_match('/^email:\s*["\']?([^"\'\r\n#]+?)["\']?\s*$/mi', $contenu, $m)) {
+			$emails[strtolower(trim($m[1]))] = $u;
+		}
+		if (preg_match('/^spip_auteur:\s*["\']?(\d+)["\']?\s*$/m', $contenu, $m)) {
+			$par_id[(int) $m[1]] = $u;
 		}
 	}
-	return array($ident, $emails);
+	return array($ident, $emails, $par_id);
+}
+
+/** Plan des comptes pour une destination (lit SPIP et le dossier user/accounts/ existant). */
+function sptg_comptes_planifier($racine, ?array $auteurs = null) {
+	$auteurs = $auteurs === null ? sptg_comptes_lire() : $auteurs;
+	list($ident, $emails, $par_id) = sptg_comptes_existants($racine);
+	return sptg_comptes_construire($auteurs, $ident, $emails, $par_id);
 }
 
 /**
- * Écrit les comptes dans $racine/user/accounts/. Un compte existant n'est jamais modifié.
+ * Écrit les comptes du plan dans $racine/user/accounts/. Un compte existant n'est jamais modifié.
  *
- * @return array ['crees' => n, 'fichiers' => chemins relatifs écrits, 'ignores' => [...], 'prerequis' => texte]
+ * @return array ['crees' => n, 'fichiers' => chemins relatifs écrits, 'liste' => [...], 'desactives' => [...], 'rattaches' => [...], 'prerequis' => texte]
  */
-function sptg_comptes_exporter($racine, ?array $auteurs = null) {
-	$auteurs = $auteurs === null ? sptg_comptes_lire() : $auteurs;
-	list($ident, $emails) = sptg_comptes_existants($racine);
-	$r = sptg_comptes_construire($auteurs, $ident, $emails);
+function sptg_comptes_exporter($racine, ?array $plan = null) {
+	$plan = $plan === null ? sptg_comptes_planifier($racine) : $plan;
 	$fichiers = array();
 	$liste = array();
-	foreach ($r['comptes'] as $u => $data) {
-		$liste[$u] = array('nom' => $data['fullname'], 'intitule' => $data['title'], 'super' => !empty($data['access']['admin']['super']));
+	foreach ($plan['comptes'] as $u => $data) {
 		sptg_ecrire(rtrim($racine, '/') . '/user/accounts/' . $u . '.yaml', sptg_yaml($data));
 		$fichiers[] = 'user/accounts/' . $u . '.yaml';
+		$liste[$u] = array(
+			'nom' => $data['fullname'], 'intitule' => $data['title'], 'etat' => $data['state'],
+			'super' => !empty($data['access']['admin']['super']),
+		);
 	}
 	return array(
-		'crees' => count($r['comptes']),
+		'crees' => count($plan['comptes']),
 		'fichiers' => $fichiers,
 		'liste' => $liste,
-		'ignores' => $r['ignores'],
+		'desactives' => $plan['desactives'],
+		'rattaches' => $plan['rattaches'],
 		'prerequis' => 'Plugins Grav `login`, `email`, `api` et `admin2` installés ; expéditeur configuré '
 			. '(`plugins.email.from` et moteur d\'envoi) ; idéalement `plugins.login.site_host` renseigné. '
 			. 'Première connexion : « Mot de passe oublié » avec l\'adresse enregistrée dans SPIP.',

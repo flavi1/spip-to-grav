@@ -152,9 +152,14 @@ function sptg_champs_sensibles($emails = false) {
  * @return array nom => ['kind' => ..., 'def' => ...]
  */
 function sptg_champs_exportables(array $info, $emails = false) {
+	include_spip('inc/sptg_extras');
+	// les champs extras ont leur propre bloc (`extras:`) et leur propre section de blueprint
 	$exclus = array_merge(
 		sptg_champs_sensibles($emails),
-		array($info['id'], $info['col_titre'], $info['date'], 'texte')
+		array($info['id'], $info['col_titre'], $info['date'], 'texte'),
+		sptg_extras_noms($info['type']),
+		// l'email d'un auteur n'est jamais écrit dans sa page : le thème le lit dans son compte Grav (afficher_email)
+		$info['type'] == 'auteur' ? array('email') : array()
 	);
 	$out = array();
 	foreach ($info['champs'] as $nom => $def) {

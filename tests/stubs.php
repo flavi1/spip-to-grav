@@ -72,6 +72,7 @@ function lister_tables_objets_sql() {
 		'spip_articles' => array('titre' => 'titre, lang', 'date' => 'date', 'statut' => array(array('champ' => 'statut'))),
 		'spip_rubriques' => array('titre' => 'titre, lang', 'date' => 'date', 'statut' => array(array('champ' => 'statut'))),
 		'spip_breves' => array('titre' => 'titre', 'date' => 'date_heure', 'statut' => array(array('champ' => 'statut'))),
+		'spip_auteurs' => array('titre' => 'nom AS titre', 'statut' => array(array('champ' => 'statut'))),
 	);
 }
 function objet_type($t) {
@@ -93,6 +94,9 @@ function sql_quote($v) {
 	return "'" . addslashes($v) . "'";
 }
 function sql_allfetsel($sel, $from, $where = array()) {
+	if (strpos($from, 'spip_auteurs_liens AS l') === 0) {
+		return $GLOBALS['SC']['auteurs_join'] ?? array();
+	}
 	$rows = $GLOBALS['SC']['rows'][$from] ?? array();
 	if ($from === 'spip_urls') {
 		$rows = $GLOBALS['SC']['spip_urls'] ?? array();
@@ -192,4 +196,8 @@ function propre($t) {
 		}
 	}
 	return $out;
+}
+
+function pipeline($nom, $flux = null) {
+	return $GLOBALS['SC']['pipelines'][$nom] ?? $flux;
 }

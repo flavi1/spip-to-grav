@@ -453,21 +453,77 @@ $aut = array(
 	array('id_auteur' => 6, 'nom' => 'Poubelle', 'login' => 'pb', 'email' => 'p@exemple.org', 'statut' => '5poubelle'),
 	array('id_auteur' => 7, 'nom' => 'Admin Grav', 'login' => 'admin', 'email' => 'admin@exemple.org', 'statut' => '1comite'),
 	array('id_auteur' => 8, 'nom' => 'Mail cassé', 'login' => 'mc', 'email' => 'pas-un-mail', 'statut' => '1comite'),
+	array('id_auteur' => 9, 'nom' => 'Admin restreint', 'login' => 'restreint', 'email' => 'r@exemple.org', 'statut' => '0minirezo', 'restreint' => true),
+	array('id_auteur' => 10, 'nom' => 'Déjà exporté', 'login' => 'deja', 'email' => '', 'statut' => '1comite'),
 );
-$aut[] = array('id_auteur' => 9, 'nom' => 'Admin restreint', 'login' => 'restreint', 'email' => 'r@exemple.org', 'statut' => '0minirezo', 'restreint' => true);
-$c = sptg_comptes_construire($aut, array('admin' => true), array('admin@exemple.org' => true));
-t_eq(array_keys($c['comptes']), array('jean', 'jean-2', 'restreint'), 'comptes : seuls admins/rédacteurs avec email valide et unique');
+$c = sptg_comptes_construire($aut, array('admin' => true, 'deja' => true), array('admin@exemple.org' => 'admin'), array(10 => 'deja'));
+t_eq(array_keys($c['comptes']), array('jean', 'jean-2', 'doublon', 'sm4', 'mc8', 'restreint'), 'comptes : un compte par admin/rédacteur (visiteurs, poubelle et déjà exportés exclus)');
+t_eq($c['map'], array(1 => 'jean', 2 => 'jean-2', 3 => 'doublon', 4 => 'sm4', 7 => 'admin', 8 => 'mc8', 9 => 'restreint', 10 => 'deja'), 'comptes : correspondance id_auteur -> compte');
 t_eq($c['comptes']['jean']['title'], 'Administrateur', 'comptes : intitulé administrateur');
 t_eq($c['comptes']['jean']['access'], sptg_comptes_acces_admin(), 'comptes : administrateur = super-admin Grav');
 t_ok($c['comptes']['jean']['access']['admin']['super'] === true and $c['comptes']['jean']['access']['api']['super'] === true, 'comptes : admin.super et api.super');
 t_eq($c['comptes']['jean-2']['title'], 'Rédacteur', 'comptes : intitulé rédacteur ; identifiant en double suffixé');
 t_eq($c['comptes']['jean']['email'], 'Jean@Exemple.org', 'comptes : email conservé tel quel');
 t_eq($c['comptes']['jean']['state'], 'enabled', 'comptes : activé');
+t_eq($c['comptes']['jean']['spip_auteur'], 1, 'comptes : id SPIP mémorisé (rattachement aux exports suivants)');
 t_ok(!isset($c['comptes']['jean']['password']) and !isset($c['comptes']['jean']['hashed_password']), 'comptes : aucun mot de passe');
 $acc = $c['comptes']['jean-2']['access'];
 t_ok($acc['api']['access'] === true and $acc['api']['pages']['write'] === true and $acc['api']['media']['write'] === true and $acc['site']['login'] === true, 'comptes : droits de rédacteur admin2');
 t_ok(!isset($acc['api']['super']) and !isset($acc['admin']) and !isset($acc['api']['config']) and !isset($acc['api']['users']) and !isset($acc['api']['system']), 'comptes : aucun droit d\'administration');
 t_eq($c['comptes']['restreint']['access'], sptg_comptes_acces(), 'comptes : administrateur restreint = droits de rédacteur');
-t_eq(array_column($c['ignores'], 'id_auteur'), array(3, 4, 7, 8), 'comptes : ignorés = doublon, sans email, email déjà pris, email invalide');
+foreach (array('doublon', 'sm4', 'mc8') as $d) {
+	t_eq(array($c['comptes'][$d]['state'], isset($c['comptes'][$d]['email'])), array('disabled', false), "comptes : $d désactivé et sans email");
+}
+t_eq(array_column($c['desactives'], 'compte'), array('doublon', 'sm4', 'mc8'), 'comptes : désactivés = email en double, absent, invalide');
+t_eq(array_column($c['rattaches'], 'compte'), array('admin'), 'comptes : même email qu\'un compte existant -> rattaché, rien créé');
+
+// ------------------------------------------------ Champs Extras
+include_spip('inc/sptg_extras');
+$saisies_demo = array(
+	array('saisie' => 'fieldset', 'options' => array('nom' => 'fs', 'label' => 'Infos'), 'saisies' => array(
+		array('saisie' => 'input', 'options' => array('nom' => 'ville', 'label' => 'Ville', 'obligatoire' => 'on', 'explication' => 'Ville de parution', 'sql' => "varchar(255) NOT NULL DEFAULT ''")),
+		array('saisie' => 'checkbox', 'options' => array('nom' => 'themes', 'label' => 'Thèmes', 'datas' => "a|Alpha\nb|Bêta\nc", 'sql' => 'text')),
+	)),
+	array('saisie' => 'oui_non', 'options' => array('nom' => 'actif', 'label' => 'Actif', 'defaut' => 'on', 'sql' => 'varchar(3)')),
+	array('saisie' => 'explication', 'options' => array('nom' => 'x', 'texte' => 'ignoré')),
+);
+$a = sptg_extras_aplatir($saisies_demo);
+t_eq(array_keys($a), array('ville', 'themes', 'actif'), 'extras : aplatissement (fieldset parcouru, explication ignorée)');
+t_eq($a['ville']['groupe'], 'Infos', 'extras : groupe = libellé du fieldset');
+t_eq(sptg_extras_datas($a['themes']['options']), array('a' => 'Alpha', 'b' => 'Bêta', 'c' => 'c'), 'extras : datas « valeur|libellé »');
+t_eq(sptg_extras_datas(array('datas' => array('x' => 'X'))), array('x' => 'X'), 'extras : datas en tableau');
+$cs = array('kind' => 'liste');
+t_eq(sptg_extras_valeur('a, b,,c', $cs), array('a', 'b', 'c'), 'extras : valeur multiple -> liste');
+t_eq(sptg_extras_valeur('', $cs), null, 'extras : vide -> null');
+t_eq(sptg_extras_valeur('on', array('kind' => 'bool')), true, 'extras : on -> true');
+t_eq(sptg_extras_valeur('non', array('kind' => 'bool')), false, 'extras : non -> false');
+t_eq(sptg_extras_valeur('12', array('kind' => 'int')), 12, 'extras : entier');
+$def_ville = array('kind' => 'chaine', 'saisie' => 'input', 'options' => $a['ville']['options'], 'label' => 'Ville');
+$bp = sptg_extra_blueprint('ville', $def_ville);
+t_eq($bp['type'], 'text', 'extras blueprint : input -> text');
+t_eq($bp['label'], 'Ville', 'extras blueprint : label');
+t_eq($bp['help'], 'Ville de parution', 'extras blueprint : explication -> help');
+t_eq($bp['validate']['required'], true, 'extras blueprint : obligatoire');
+$bp = sptg_extra_blueprint('themes', array('kind' => 'liste', 'saisie' => 'checkbox', 'options' => $a['themes']['options'], 'label' => 'Thèmes'));
+t_eq($bp['type'], 'checkboxes', 'extras blueprint : checkbox -> checkboxes');
+t_eq($bp['options'], array('a' => 'Alpha', 'b' => 'Bêta', 'c' => 'c'), 'extras blueprint : options (datas)');
+$bp = sptg_extra_blueprint('actif', array('kind' => 'bool', 'saisie' => 'oui_non', 'options' => $a['actif']['options'], 'label' => 'Actif'));
+t_eq(array($bp['type'], $bp['default']), array('toggle', 1), 'extras blueprint : oui_non -> toggle, défaut');
+t_eq(sptg_twig_texte('A {{x}} <b>'), 'A &#123;&#123;x&#125;&#125; &lt;b&gt;', 'twig : texte libre neutralisé');
+
+// ------------------------------------------------ liens « à l'ancienne » vers des objets
+$h = 'exemple.org';
+t_eq(sptg_url_vers_objet('/spip.php?article12', $h), array('article', 12, ''), 'liens spip : spip.php?article12');
+t_eq(sptg_url_vers_objet('spip.php?article12&var_mode=calcul#intro', $h), array('article', 12, '#intro'), 'liens spip : article12 + paramètre + ancre');
+t_eq(sptg_url_vers_objet('spip.php?page=article&amp;id_article=12', $h), array('article', 12, ''), 'liens spip : page=article&id_article=12');
+t_eq(sptg_url_vers_objet('?id_rubrique=3', $h), array('rubrique', 3, ''), 'liens spip : ?id_rubrique=3');
+t_eq(sptg_url_vers_objet('article.php3?id_article=7', $h), array('article', 7, ''), 'liens spip : article.php3?id_article=7');
+t_eq(sptg_url_vers_objet('/article12.html', $h), array('article', 12, ''), 'liens spip : /article12.html');
+t_eq(sptg_url_vers_objet('https://www.exemple.org/spip.php?article5', $h), array('article', 5, ''), 'liens spip : avec le domaine du site (www ignoré)');
+t_eq(sptg_url_vers_objet('http://mondialisme.org/spip.php?article1308', $h), null, 'liens spip : autre site ignoré');
+t_eq(sptg_url_vers_objet('http://mondialisme.org/spip.php?article1308', ''), null, 'liens spip : domaine absolu sans adresse_site connue -> ignoré');
+t_eq(sptg_url_vers_objet('/spip.php?page=contact', $h), null, 'liens spip : page sans objet -> rien');
+t_eq(sptg_url_vers_objet('/une-page', $h), null, 'liens spip : URL ordinaire -> rien');
+t_eq(sptg_url_vers_objet('mailto:a@b.org', $h), null, 'liens spip : mailto -> rien');
 
 t_fin('unit');

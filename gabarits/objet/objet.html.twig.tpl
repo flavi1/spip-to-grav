@@ -8,11 +8,15 @@
 	</header>
 	{% set s = page.header.spip ?? {} %}
 	{% include 'partials/logo.html.twig' %}
+@@COMPTE@@
 @@CHAMPS_TETE@@
-	<div class="spip-texte">{{ page.content|raw }}</div>
+	{% if page.content|trim is not empty %}<div class="spip-texte">{{ page.content|raw }}</div>{% endif %}
 @@CHAMPS_QUEUE@@
 @@LISTE_CHAMPS@@
+@@EXTRAS@@
+@@COMMENTAIRES@@
 	{% include 'partials/documents.html.twig' %}
+	{% include 'partials/auteurs.html.twig' %}
 	{% include 'partials/taxonomies.html.twig' %}
 @@ENFANTS@@
 </article>

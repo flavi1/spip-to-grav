@@ -120,6 +120,24 @@ class @@CLASSE@@ extends Theme
 			return [isset($h->spip_type) ? (string) $h->spip_type : '', isset($h->spip_id) ? (int) $h->spip_id : 0,
 				isset($h->spip_lang) ? (string) $h->spip_lang : ''];
 		};
+		// compte Grav d'un auteur (nom, intitulé, email) : l'email n'est affiché que si le template le décide
+		$twig->addFunction(new \Twig\TwigFunction('sptg_compte', function ($username) use ($self) {
+			$username = (string) $username;
+			if (!preg_match('/^[a-z0-9_-]{3,16}$/', $username)) {
+				return null;
+			}
+			try {
+				$u = $self->grav['accounts']->load($username);
+			} catch (\Throwable $e) {
+				return null;
+			}
+			$nom = (string) $u->get('fullname');
+			$email = (string) $u->get('email');
+			if ($nom === '' && $email === '') {
+				return null;
+			}
+			return ['username' => $username, 'fullname' => $nom !== '' ? $nom : $username, 'title' => (string) $u->get('title'), 'email' => $email];
+		}));
 		$twig->addFunction(new \Twig\TwigFunction('sptg_traductions', function ($page) use ($self, $ident) {
 			list($type, $id, $lang) = $ident($page);
 			if ($type === '' or $id <= 0) {
